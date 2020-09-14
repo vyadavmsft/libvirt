@@ -22,6 +22,7 @@
 
 #include "configmake.h"
 #include "viralloc.h"
+#include "virconf.h"
 #include "vircommand.h"
 #include "virlog.h"
 #include "virobject.h"
@@ -152,6 +153,7 @@ virCHDriverConfigNew(bool privileged)
     }
 
     if (privileged) {
+        cfg->configBaseDir = g_strdup(SYSCONFDIR "/libvirt");
         cfg->logDir = g_strdup_printf("%s/log/libvirt/ch", LOCALSTATEDIR);
         cfg->stateDir = g_strdup_printf("%s/libvirt/ch", RUNSTATEDIR);
 
@@ -165,7 +167,15 @@ virCHDriverConfigNew(bool privileged)
 
         rundir = virGetUserRuntimeDirectory();
         cfg->stateDir = g_strdup_printf("%s/ch/run", rundir);
+
+        cfg->configBaseDir = virGetUserConfigDirectory();
     }
+
+    cfg->configDir = g_strdup_printf("%s/ch", cfg->configBaseDir);
+    cfg->autostartDir = g_strdup_printf("%s/ch/autostart", cfg->configBaseDir);
+    cfg->logTimestamp = true;
+    cfg->stdioLogD = false;
+    cfg->cgroupControllers = -1; /* Auto detect */
 
     return cfg;
 }
@@ -186,6 +196,9 @@ virCHDriverConfigDispose(void *obj)
 
     g_free(cfg->stateDir);
     g_free(cfg->logDir);
+    g_free(cfg->configBaseDir);
+    g_free(cfg->configDir);
+    g_free(cfg->autostartDir);
 }
 
 #define MIN_VERSION ((15 * 1000000) + (0 * 1000) + (0))

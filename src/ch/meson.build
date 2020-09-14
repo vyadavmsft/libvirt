@@ -1,14 +1,24 @@
 ch_driver_sources = [
   'ch_conf.c',
   'ch_conf.h',
+  'ch_cgroup.c',
+  'ch_cgroup.h',
   'ch_domain.c',
   'ch_domain.h',
   'ch_driver.c',
   'ch_driver.h',
+  'ch_hostdev.c',
+  'ch_hostdev.h',
+  'ch_hotplug.c',
+  'ch_hotplug.h',
   'ch_monitor.c',
   'ch_monitor.h',
   'ch_process.c',
   'ch_process.h',
+  'ch_interface.c',
+  'ch_interface.h',
+  'ch_hostdev.c',
+  'ch_hostdev.h',
 ]
 
 driver_source_files += files(ch_driver_sources)
@@ -29,7 +39,11 @@ if conf.has('WITH_CH')
     ],
     include_directories: [
       conf_inc_dir,
+      hypervisor_inc_dir,
     ],
+    link_with: [
+      virt_util_lib,
+    ]
   )
 
   virt_modules += {

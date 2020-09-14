@@ -20,8 +20,14 @@
 
 #pragma once
 
+#include <glib-object.h>
 #include "ch_conf.h"
 #include "ch_monitor.h"
+#include "virchrdev.h"
+#include "vircgroup.h"
+#include "logging/log_manager.h"
+
+#define CH_DEV_VFIO "/dev/vfio/vfio"
 
 /* Give up waiting for mutex after 30 seconds */
 #define CH_JOB_WAIT_TIME (1000ull * 30)
@@ -39,27 +45,115 @@ enum virCHDomainJob {
 };
 VIR_ENUM_DECL(virCHDomainJob);
 
+typedef enum {
+    CH_DOMAIN_LOG_CONTEXT_MODE_START,
+    CH_DOMAIN_LOG_CONTEXT_MODE_ATTACH,
+    CH_DOMAIN_LOG_CONTEXT_MODE_STOP,
+} chDomainLogContextMode;
 
-struct virCHDomainJobObj {
+
+#define CH_TYPE_DOMAIN_LOG_CONTEXT ch_domain_log_context_get_type()
+G_DECLARE_FINAL_TYPE(chDomainLogContext, ch_domain_log_context, CH, DOMAIN_LOG_CONTEXT, GObject);
+struct _virCHDomainJobObj {
     virCond cond;                       /* Use to coordinate jobs */
     enum virCHDomainJob active;        /* Currently running job */
     int owner;                          /* Thread which set current job */
 };
 
+typedef struct _virCHDomainJobObj virCHDomainJobObj;
 
 typedef struct _virCHDomainObjPrivate virCHDomainObjPrivate;
 struct _virCHDomainObjPrivate {
-    struct virCHDomainJobObj job;
+    pid_t initpid;
+
+    virCHDomainJobObj job;
+
+    virCHDriver *driver;
 
     virCHMonitor *monitor;
+
+    virChrdevs *devs;
+
+    char *machineName;
+
+    char *pidfile;
+
+    virBitmap *autoNodeset;
+    virBitmap *autoCpuset;
+
+    virCgroup *cgroup;
+
+    size_t tapfdSize;
+    int *tapfd;
+
+    virThread vmThreadWatcher;
+    int vmThreadWatcherStop;
+
+    char *ch_path;
 };
+
+#define CH_DOMAIN_PRIVATE(vm) \
+    ((virCHDomainObjPrivate *) (vm)->privateData)
+
+virCHMonitor *virCHDomainGetMonitor(virDomainObj *vm);
+
+typedef struct _virCHDomainVcpuPrivate virCHDomainVcpuPrivate;
+struct _virCHDomainVcpuPrivate {
+    virObject parent;
+
+    pid_t tid; /* vcpu thread id */
+    virTristateBool halted;
+};
+
+#define CH_DOMAIN_VCPU_PRIVATE(vcpu) \
+    ((virCHDomainVcpuPrivate *) (vcpu)->privateData)
 
 extern virDomainXMLPrivateDataCallbacks virCHDriverPrivateDataCallbacks;
 extern virDomainDefParserConfig virCHDriverDomainDefParserConfig;
 
+
+chDomainLogContext *chDomainLogContextNew(virCHDriver *driver,
+                                            virDomainObj *vm,
+                                            chDomainLogContextMode mode);
+int chDomainLogContextGetWriteFD(chDomainLogContext *ctxt);
+
+
+int chDomainLogAppendMessage(virCHDriver *driver,
+                               virDomainObj *vm,
+                               const char *fmt,
+                               ...) G_GNUC_PRINTF(3, 4);
 int
 virCHDomainObjBeginJob(virDomainObj *obj, enum virCHDomainJob job)
     G_GNUC_WARN_UNUSED_RESULT;
 
 void
+
 virCHDomainObjEndJob(virDomainObj *obj);
+
+void
+virCHDomainRemoveInactive(virCHDriver *driver,
+                          virDomainObj *vm);
+
+void
+virCHDomainRemoveInactiveJob(virCHDriver *driver,
+                             virDomainObj *vm);
+
+void
+virCHDomainRemoveInactiveJobLocked(virCHDriver *driver,
+                                   virDomainObj *vm);
+
+int virCHDomainRefreshThreadInfo(virDomainObj *vm);
+
+pid_t virCHDomainGetVcpuPid(virDomainObj *vm, unsigned int vcpuid);
+bool virCHDomainHasVcpuPids(virDomainObj *vm);
+
+char *virCHDomainGetMachineName(virDomainObj *vm);
+
+int
+virCHDomainValidateVcpuInfo(virDomainObj *vm);
+
+virDomainObj *virCHDomainObjFromDomain(virDomain *domain);
+
+int
+virCHDomainObjRestoreJob(virDomainObj *obj,
+                         virCHDomainJobObj *job);
