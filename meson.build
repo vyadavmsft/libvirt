@@ -1551,7 +1551,6 @@ if not get_option('driver_ch').disabled() and host_machine.system() == 'linux' a
 
   if use_ch
     conf.set('WITH_CH', 1)
-
     default_ch_user = 'root'
     default_ch_group = 'root'
     ch_user = get_option('ch_user')

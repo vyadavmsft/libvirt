@@ -21,7 +21,9 @@
 #pragma once
 
 #include "virdomainobjlist.h"
+#include "virhostdev.h"
 #include "virthread.h"
+#include "virebtables.h"
 
 #define CH_DRIVER_NAME "CH"
 #define CH_CMD "cloud-hypervisor"
@@ -39,11 +41,26 @@ struct _virCHDriverConfig {
 
     uid_t user;
     gid_t group;
+
+    char *configBaseDir;
+    char *configDir;
+    char *autostartDir;
+    int cgroupControllers;
+    bool logTimestamp;
+    bool stdioLogD;
+    bool macFilter;
 };
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(virCHDriverConfig, virObjectUnref);
 
 struct _virCHDriver
 {
     virMutex lock;
+
+    bool privileged;
+
+    /* Embedded Mode: Not yet supported */
+    char *embeddedRoot;
 
     /* Require lock to get a reference on the object,
      * lockless access thereafter */
@@ -62,8 +79,14 @@ struct _virCHDriver
      * then lockless thereafter */
     virCHDriverConfig *config;
 
+    /* Immutable pointer, lockless APIs. Pointless abstraction */
+    ebtablesContext *ebtables;
+
     /* pid file FD, ensures two copies of the driver can't use the same root */
     int lockFD;
+
+    /* Immutable pointer to host device manager */
+    virHostdevManager *hostdevMgr;
 };
 
 virCaps *virCHDriverCapsInit(void);

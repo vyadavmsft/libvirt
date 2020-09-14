@@ -29,3 +29,17 @@ int virCHProcessStart(virCHDriver *driver,
 int virCHProcessStop(virCHDriver *driver,
                      virDomainObj *vm,
                      virDomainShutoffReason reason);
+
+int virCHProcessSetupThreads(virDomainObj *vm);
+
+int virCHProcessSetupVcpu(virDomainObj *vm,
+                          unsigned int vcpuid);
+
+int virCHProcessSetupIOThread(virDomainObj *vm,
+                             virDomainIOThreadInfo *iothread);
+
+int
+virCHProcessSetupEmulatorThread(virDomainObj *vm, pid_t tid);
+
+void
+chProcessReconnectAll(virCHDriver *driver);
