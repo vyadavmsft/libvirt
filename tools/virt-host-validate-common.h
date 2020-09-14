@@ -89,3 +89,9 @@ int virHostValidateSecureGuests(const char *hvname,
                                 virHostValidateLevel level);
 
 bool virHostKernelModuleIsLoaded(const char *module);
+
+int virHostValidateCmdOutput(const char* cmd_name,
+						     char* cmd_output,
+                             int max_output_size,	
+                             virHostValidateLevel level,
+                             const char *hint);
