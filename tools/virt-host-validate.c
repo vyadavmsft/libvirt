@@ -55,7 +55,7 @@ show_help(FILE *out, const char *argv0)
               "   - qemu\n"
               "   - lxc\n"
               "   - bhyve\n"
-		      "   - ch\n"
+              "   - ch\n"
               "\n"
               " Options:\n"
               "   -h, --help     Display command line help\n"

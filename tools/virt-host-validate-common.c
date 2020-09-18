@@ -527,31 +527,3 @@ int virHostValidateSecureGuests(const char *hvname,
 
     return 0;
 }
-
-int virHostValidateCmdOutput(const char* cmd_name,
-                             char* cmd_output,
-                             int max_output_size,
-                             virHostValidateLevel level,
-                             const char *hint)
-{
-    int ret = -1;
-	FILE *restrict fp;
-	if(!cmd_output)
-		return ret;
-	
-    fp = popen(cmd_name, "r");
-    if (fp == NULL) {
-        pclose(fp);
-        virHostMsgFail(level, "%s", hint);
-        return -1;
-    }
-    while (fgets(cmd_output, max_output_size, fp) != NULL) {
-         if (strlen(cmd_output) > 0) {
-            ret = 0;
-            break;
-         }
-    }
-    pclose(fp);
-    return ret;
-}
-
