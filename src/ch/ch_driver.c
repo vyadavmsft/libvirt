@@ -41,6 +41,7 @@
 #include "viruri.h"
 #include "virutil.h"
 #include "viruuid.h"
+#include "virchrdev.h"
 
 #define VIR_FROM_THIS VIR_FROM_CH
 
@@ -816,6 +817,84 @@ static int chDomainGetInfo(virDomainPtr dom,
     return ret;
 }
 
+static int
+chDomainOpenConsole(virDomainPtr dom,
+                      const char *dev_name,
+                      virStreamPtr st,
+                      unsigned int flags)
+{
+    virDomainObjPtr vm = NULL;
+    int ret = -1;
+    size_t i;
+    virDomainChrDefPtr chr = NULL;
+    virCHDomainObjPrivatePtr priv;
+
+    virCheckFlags(VIR_DOMAIN_CONSOLE_SAFE |
+                  VIR_DOMAIN_CONSOLE_FORCE, -1);
+
+    if (!(vm = chDomObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainOpenConsoleEnsureACL(dom->conn, vm->def) < 0)
+        goto cleanup;
+
+    if (virDomainObjCheckActive(vm) < 0)
+        goto cleanup;
+
+    priv = vm->privateData;
+
+    if (dev_name) {
+        for (i = 0; !chr && i < vm->def->nconsoles; i++) {
+            if (vm->def->consoles[i]->info.alias &&
+                STREQ(dev_name, vm->def->consoles[i]->info.alias))
+                chr = vm->def->consoles[i];
+        }
+        for (i = 0; !chr && i < vm->def->nserials; i++) {
+            if (STREQ(dev_name, vm->def->serials[i]->info.alias))
+                chr = vm->def->serials[i];
+        }
+        for (i = 0; !chr && i < vm->def->nparallels; i++) {
+            if (STREQ(dev_name, vm->def->parallels[i]->info.alias))
+                chr = vm->def->parallels[i];
+        }
+    } else {
+        if (vm->def->nconsoles)
+            chr = vm->def->consoles[0];
+        else if (vm->def->nserials)
+            chr = vm->def->serials[0];
+    }
+
+    if (!chr) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("cannot find character device %s"),
+                       NULLSTR(dev_name));
+        goto cleanup;
+    }
+
+    if (chr->source->type != VIR_DOMAIN_CHR_TYPE_PTY) {
+        virReportError(VIR_ERR_INTERNAL_ERROR,
+                       _("character device %s is not using a PTY"),
+                       dev_name ? dev_name : NULLSTR(chr->info.alias));
+        goto cleanup;
+    }
+
+    /* handle mutually exclusive access to console devices */
+    ret = virChrdevOpen(priv->devs,
+                        chr->source,
+                        st,
+                        (flags & VIR_DOMAIN_CONSOLE_FORCE) != 0);
+
+    if (ret == 1) {
+        virReportError(VIR_ERR_OPERATION_FAILED, "%s",
+                       _("Active console session exists for this domain"));
+        ret = -1;
+    }
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
+}
+
 static int chStateCleanup(void)
 {
     if (ch_driver == NULL)
@@ -913,6 +992,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainGetInfo = chDomainGetInfo,                       /* 6.7.0 */
     .domainIsActive = chDomainIsActive,                     /* 6.7.0 */
     .nodeGetInfo = chNodeGetInfo,                           /* 6.7.0 */
+    .domainOpenConsole = chDomainOpenConsole                /* 6.7.0 */
 };
 
 static virConnectDriver chConnectDriver = {
