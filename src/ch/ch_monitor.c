@@ -352,6 +352,62 @@ virCHMonitorBuildNetsJson(virJSONValuePtr content, virDomainDefPtr vmdef)
 }
 
 static int
+virCHMonitorBuildDeviceJson(virJSONValuePtr devices, virDomainHostdevDefPtr hostdevdef)
+{
+    virJSONValuePtr device;
+
+    if (hostdevdef->mode == VIR_DOMAIN_HOSTDEV_MODE_SUBSYS &&
+        hostdevdef->source.subsys.type == VIR_DOMAIN_HOSTDEV_SUBSYS_TYPE_PCI) {
+        g_autofree char *name = NULL;
+        g_autofree char *path = NULL;
+        virDomainHostdevSubsysPCIPtr pcisrc = &hostdevdef->source.subsys.u.pci;
+        device = virJSONValueNewObject();
+        name = g_strdup_printf(VIR_PCI_DEVICE_ADDRESS_FMT, pcisrc->addr.domain,
+                               pcisrc->addr.bus, pcisrc->addr.slot,
+                               pcisrc->addr.function);
+        path = g_strdup_printf("/sys/bus/pci/devices/%s/", name);
+        if (!virFileExists(path)) {
+            virReportError(VIR_ERR_DEVICE_MISSING,
+                           _("host pci device %s not found"), path);
+            goto cleanup;
+        }
+        if (virJSONValueObjectAppendString(device, "path", path) < 0)
+            goto cleanup;
+        if (virJSONValueArrayAppend(devices, device) < 0)
+            goto cleanup;
+    }
+
+    return 0;
+
+ cleanup:
+    virJSONValueFree(device);
+    return -1;
+}
+
+static int
+virCHMonitorBuildDevicesJson(virJSONValuePtr content, virDomainDefPtr vmdef)
+{
+    virJSONValuePtr devices;
+    size_t i;
+
+    if (vmdef->nhostdevs > 0) {
+        devices = virJSONValueNewArray();
+        for (i = 0; i < vmdef->nhostdevs; i++) {
+            if (virCHMonitorBuildDeviceJson(devices, vmdef->hostdevs[i]) < 0)
+                goto cleanup;
+        }
+        if (virJSONValueObjectAppend(content, "devices", devices) < 0)
+            goto cleanup;
+    }
+
+    return 0;
+
+ cleanup:
+    virJSONValueFree(devices);
+    return -1;
+}
+
+static int
 virCHMonitorBuildVMJson(virDomainDefPtr vmdef, char **jsonstr)
 {
     virJSONValuePtr content = virJSONValueNewObject();
@@ -382,6 +438,9 @@ virCHMonitorBuildVMJson(virDomainDefPtr vmdef, char **jsonstr)
         goto cleanup;
 
     if (virCHMonitorBuildNetsJson(content, vmdef) < 0)
+        goto cleanup;
+
+    if (virCHMonitorBuildDevicesJson(content, vmdef) < 0)
         goto cleanup;
 
     if (!(*jsonstr = virJSONValueToString(content, false)))
@@ -671,6 +730,10 @@ virCHMonitorPutNoContent(virCHMonitorPtr mon, const char *endpoint)
     curl_easy_setopt(mon->handle, CURLOPT_UNIX_SOCKET_PATH, mon->socketpath);
     curl_easy_setopt(mon->handle, CURLOPT_URL, url);
     curl_easy_setopt(mon->handle, CURLOPT_PUT, true);
+    /* FIXME: Sometimes Cloud-Hypervisor takes too long to respond on vm.boot */
+    /* causing perform to hang. Figure out if the expect 100 behavior is
+    /* correct. */
+    curl_easy_setopt(mon->handle, CURLOPT_EXPECT_100_TIMEOUT_MS,10000);
     curl_easy_setopt(mon->handle, CURLOPT_HTTPHEADER, NULL);
 
     responseCode = virCHMonitorCurlPerform(mon->handle);
