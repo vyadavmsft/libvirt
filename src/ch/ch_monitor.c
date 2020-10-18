@@ -719,6 +719,7 @@ virCHMonitorPutNoContent(virCHMonitorPtr mon, const char *endpoint)
     char *url;
     int responseCode = 0;
     int ret = -1;
+    struct curl_slist *headers = NULL;
 
     url = g_strdup_printf("%s/%s", URL_ROOT, endpoint);
 
@@ -727,14 +728,13 @@ virCHMonitorPutNoContent(virCHMonitorPtr mon, const char *endpoint)
     /* reset all options of a libcurl session handle at first */
     curl_easy_reset(mon->handle);
 
+    headers = curl_slist_append(headers, "Expect:");
+    headers = curl_slist_append(headers, "Transfer-Encoding:");
+
     curl_easy_setopt(mon->handle, CURLOPT_UNIX_SOCKET_PATH, mon->socketpath);
     curl_easy_setopt(mon->handle, CURLOPT_URL, url);
-    curl_easy_setopt(mon->handle, CURLOPT_PUT, true);
-    /* FIXME: Sometimes Cloud-Hypervisor takes too long to respond on vm.boot */
-    /* causing perform to hang. Figure out if the expect 100 behavior is
-    /* correct. */
-    curl_easy_setopt(mon->handle, CURLOPT_EXPECT_100_TIMEOUT_MS,10000);
-    curl_easy_setopt(mon->handle, CURLOPT_HTTPHEADER, NULL);
+    curl_easy_setopt(mon->handle, CURLOPT_CUSTOMREQUEST, "PUT");
+    curl_easy_setopt(mon->handle, CURLOPT_HTTPHEADER, headers);
 
     responseCode = virCHMonitorCurlPerform(mon->handle);
 
@@ -744,6 +744,8 @@ virCHMonitorPutNoContent(virCHMonitorPtr mon, const char *endpoint)
         ret = 0;
 
     VIR_FREE(url);
+    curl_slist_free_all(headers);
+
     return ret;
 }
 
