@@ -1710,7 +1710,18 @@ elif get_option('driver_lxc').enabled()
 endif
 
 if not get_option('driver_ch').disabled() and host_machine.system() == 'linux' and conf.has('WITH_LIBVIRTD')
-  conf.set('WITH_CH', 1)
+  use_ch = true
+
+  if not yajl_dep.found()
+    use_ch = false
+    if get_option('driver_ch').enabled()
+      error('YAJL 2 is required to build Cloud Hypervisor driver')
+    endif
+  endif
+
+  if use_ch
+    conf.set('WITH_CH', 1)
+  endif
 endif
 
 # there's no use compiling the network driver without the libvirt
