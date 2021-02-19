@@ -21,6 +21,7 @@
 #pragma once
 
 #include "virdomainobjlist.h"
+#include "virhostdev.h"
 #include "virthread.h"
 #include "virebtables.h"
 
@@ -80,6 +81,9 @@ struct _virCHDriver
 
     /* pid file FD, ensures two copies of the driver can't use the same root */
     int lockFD;
+
+    /* Immutable pointer to host device manager */
+    virHostdevManagerPtr hostdevMgr;
 };
 
 virCapsPtr virCHDriverCapsInit(void);
