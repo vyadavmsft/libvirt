@@ -20,8 +20,8 @@
 
 #include <config.h>
 
-#include "datatypes.h"
 #include "ch_domain.h"
+#include "datatypes.h"
 #include "domain_driver.h"
 #include "viralloc.h"
 #include "virlog.h"
