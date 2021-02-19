@@ -25,6 +25,8 @@
 #include "virchrdev.h"
 #include "vircgroup.h"
 
+#define CH_DEV_VFIO "/dev/vfio/vfio"
+
 /* Give up waiting for mutex after 30 seconds */
 #define CH_JOB_WAIT_TIME (1000ull * 30)
 
