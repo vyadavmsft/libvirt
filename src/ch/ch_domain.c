@@ -54,10 +54,24 @@ virCHDomainObjInitJob(virCHDomainObjPrivatePtr priv)
 static void
 virCHDomainObjResetJob(virCHDomainObjPrivatePtr priv)
 {
-    struct virCHDomainJobObj *job = &priv->job;
+    virCHDomainJobObjPtr job = &priv->job;
 
     job->active = CH_JOB_NONE;
     job->owner = 0;
+}
+
+int
+virCHDomainObjRestoreJob(virDomainObjPtr obj,
+                         virCHDomainJobObjPtr job)
+{
+    virCHDomainObjPrivatePtr priv = obj->privateData;
+
+    memset(job, 0, sizeof(*job));
+    job->active = priv->job.active;
+    job->owner = priv->job.owner;
+
+    virCHDomainObjResetJob(priv);
+    return 0;
 }
 
 static void
@@ -137,21 +151,98 @@ virCHDomainObjEndJob(virDomainObjPtr obj)
     virCondSignal(&priv->job.cond);
 }
 
+/**
+ * virCHDomainRemoveInactive:
+ *
+ * The caller must hold a lock to the vm.
+ */
+void
+virCHDomainRemoveInactive(virCHDriverPtr driver,
+                          virDomainObjPtr vm)
+{
+    if (vm->persistent) {
+        /* Short-circuit, we don't want to remove a persistent domain */
+        return;
+    }
+
+    virDomainObjListRemove(driver->domains, vm);
+}
+
+/**
+ * virCHDomainRemoveInactiveLocked:
+ *
+ * The caller must hold a lock to the vm and must hold the
+ * lock on driver->domains in order to call the remove obj
+ * from locked list method.
+ */
+static void
+virCHDomainRemoveInactiveLocked(virCHDriverPtr driver,
+                                virDomainObjPtr vm)
+{
+    if (vm->persistent) {
+        /* Short-circuit, we don't want to remove a persistent domain */
+        return;
+    }
+
+    virDomainObjListRemoveLocked(driver->domains, vm);
+}
+
+/**
+ * virCHDomainRemoveInactiveJob:
+ *
+ * Just like virCHDomainRemoveInactive but it tries to grab a
+ * CH_JOB_MODIFY first. Even though it doesn't succeed in
+ * grabbing the job the control carries with
+ * virCHDomainRemoveInactive call.
+ */
+void
+virCHDomainRemoveInactiveJob(virCHDriverPtr driver,
+                             virDomainObjPtr vm)
+{
+    bool haveJob;
+
+    haveJob = virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) >= 0;
+
+    virCHDomainRemoveInactive(driver, vm);
+
+    if (haveJob)
+        virCHDomainObjEndJob(vm);
+}
+
+/**
+ * virCHDomainRemoveInactiveJobLocked:
+ *
+ * Similar to virCHomainRemoveInactiveJob,
+ * except that the caller must also hold the lock @driver->domains
+ */
+void
+virCHDomainRemoveInactiveJobLocked(virCHDriverPtr driver,
+                                   virDomainObjPtr vm)
+{
+    bool haveJob;
+
+    haveJob = virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) >= 0;
+
+    virCHDomainRemoveInactiveLocked(driver, vm);
+
+    if (haveJob)
+        virCHDomainObjEndJob(vm);
+}
+
 static void *
 virCHDomainObjPrivateAlloc(void *opaque)
 {
     virCHDomainObjPrivatePtr priv;
 
-    if (VIR_ALLOC(priv) < 0)
-        return NULL;
+    priv = g_new0(virCHDomainObjPrivate, 1);
 
     if (virCHDomainObjInitJob(priv) < 0) {
-        VIR_FREE(priv);
+        g_free(priv);
         return NULL;
     }
 
     if (!(priv->devs = virChrdevAlloc())) {
-        VIR_FREE(priv);
+        g_free(priv);
         return NULL;
     }
 
@@ -167,7 +258,9 @@ virCHDomainObjPrivateFree(void *data)
 
     virChrdevFree(priv->devs);
     virCHDomainObjFreeJob(priv);
-    VIR_FREE(priv);
+    if (priv->pidfile)
+        g_free(priv->pidfile);
+    g_free(priv);
 }
 
 static int

@@ -103,7 +103,8 @@ struct _virCHMonitor {
     virCHMonitorThreadInfoPtr threads;
 };
 
-virCHMonitorPtr virCHMonitorNew(virDomainObjPtr vm, const char *socketdir);
+virCHMonitorPtr virCHMonitorOpen(virDomainObjPtr vm, virCHDriverPtr driver);
+virCHMonitorPtr virCHMonitorNew(virDomainObjPtr vm, virCHDriverPtr driver);
 void virCHMonitorClose(virCHMonitorPtr mon);
 
 int virCHMonitorCreateVM(virCHMonitorPtr mon,

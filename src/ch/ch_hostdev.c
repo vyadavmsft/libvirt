@@ -213,7 +213,6 @@ int
 chHostdevPrepareDomainDevices(virCHDriverPtr driver,
                               virDomainDefPtr def,
                               unsigned int flags)
-
 {
     if (!def->nhostdevs && !def->ndisks)
         return 0;
@@ -355,4 +354,93 @@ chHostdevReAttachDomainDevices(virCHDriverPtr driver,
 
     chHostdevReAttachMediatedDevices(driver, def->name, def->hostdevs,
                                      def->nhostdevs);
+}
+
+int
+chHostdevUpdateActivePCIDevices(virCHDriverPtr driver,
+                                virDomainDefPtr def)
+{
+    virHostdevManagerPtr mgr = driver->hostdevMgr;
+
+    if (!def->nhostdevs)
+        return 0;
+
+    return virHostdevUpdateActivePCIDevices(mgr, def->hostdevs, def->nhostdevs,
+                                            CH_DRIVER_NAME, def->name);
+}
+
+int
+chHostdevUpdateActiveUSBDevices(virCHDriverPtr driver,
+                                virDomainDefPtr def)
+{
+    virHostdevManagerPtr mgr = driver->hostdevMgr;
+
+    if (!def->nhostdevs)
+        return 0;
+
+    return virHostdevUpdateActiveUSBDevices(mgr, def->hostdevs, def->nhostdevs,
+                                            CH_DRIVER_NAME, def->name);
+}
+
+int
+chHostdevUpdateActiveSCSIDevices(virCHDriverPtr driver,
+                                 virDomainDefPtr def)
+{
+    virHostdevManagerPtr mgr = driver->hostdevMgr;
+
+    if (!def->nhostdevs)
+        return 0;
+
+    return virHostdevUpdateActiveSCSIDevices(mgr, def->hostdevs, def->nhostdevs,
+                                             CH_DRIVER_NAME, def->name);
+}
+
+int
+chHostdevUpdateActiveMediatedDevices(virCHDriverPtr driver,
+                                     virDomainDefPtr def)
+{
+    virHostdevManagerPtr mgr = driver->hostdevMgr;
+
+    if (!def->nhostdevs)
+        return 0;
+
+    return virHostdevUpdateActiveMediatedDevices(mgr, def->hostdevs,
+                                                 def->nhostdevs,
+                                                 CH_DRIVER_NAME, def->name);
+}
+
+int
+chHostdevUpdateActiveNVMeDisks(virCHDriverPtr driver,
+                               virDomainDefPtr def)
+{
+    return virHostdevUpdateActiveNVMeDevices(driver->hostdevMgr,
+                                             CH_DRIVER_NAME,
+                                             def->name,
+                                             def->disks,
+                                             def->ndisks);
+}
+
+int
+chHostdevUpdateActiveDomainDevices(virCHDriverPtr driver,
+                                   virDomainDefPtr def)
+{
+    if (!def->nhostdevs && !def->ndisks)
+        return 0;
+
+    if (chHostdevUpdateActiveNVMeDisks(driver, def) < 0)
+        return -1;
+
+    if (chHostdevUpdateActivePCIDevices(driver, def) < 0)
+        return -1;
+
+    if (chHostdevUpdateActiveUSBDevices(driver, def) < 0)
+        return -1;
+
+    if (chHostdevUpdateActiveSCSIDevices(driver, def) < 0)
+        return -1;
+
+    if (chHostdevUpdateActiveMediatedDevices(driver, def) < 0)
+        return -1;
+
+    return 0;
 }

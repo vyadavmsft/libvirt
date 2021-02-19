@@ -32,6 +32,7 @@
 #include "virfile.h"
 #include "virjson.h"
 #include "virlog.h"
+#include "virpidfile.h"
 #include "virtime.h"
 #include "ch_interface.h"
 
@@ -560,31 +561,67 @@ chMonitorBuildSocketCmd(virDomainObjPtr vm, const char *socket_path)
 }
 
 virCHMonitorPtr
-virCHMonitorNew(virDomainObjPtr vm, const char *socketdir)
+virCHMonitorOpen(virDomainObjPtr vm, virCHDriverPtr driver)
 {
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
+    virCHMonitorPtr mon = NULL;
+
+    /* Hold an extra reference because we can't allow 'vm' to be
+     * deleted until the monitor gets its own reference. */
+    virObjectRef(vm);
+
+    if (!virDomainObjIsActive(vm)) {
+        virReportError(VIR_ERR_OPERATION_FAILED, "%s",
+                       _("domain is not running"));
+        goto error;
+    }
+
+    if (virCHMonitorInitialize() < 0)
+        goto error;
+
+    if (!(mon = virObjectLockableNew(virCHMonitorClass)))
+        goto error;
+
+    mon->socketpath = g_strdup_printf("%s/%s-socket", cfg->stateDir, vm->def->name);
+    mon->handle = curl_easy_init();
+    virObjectRef(mon);
+    mon->vm = virObjectRef(vm);
+
+ error:
+    virObjectUnref(vm);
+    return mon;
+}
+
+virCHMonitorPtr
+virCHMonitorNew(virDomainObjPtr vm, virCHDriverPtr driver)
+{
+    virCHDomainObjPrivatePtr priv = vm->privateData;
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
     virCHMonitorPtr ret = NULL;
     virCHMonitorPtr mon = NULL;
     virCommandPtr cmd = NULL;
     int i;
-    virCHDomainObjPrivatePtr priv = vm->privateData;
     int pings = 0;
+    int rv;
 
     if (virCHMonitorInitialize() < 0)
-        return NULL;
+        goto cleanup;
 
     if (!(mon = virObjectLockableNew(virCHMonitorClass)))
-        return NULL;
+        goto cleanup;
 
-    mon->socketpath = g_strdup_printf("%s/%s-socket", socketdir, vm->def->name);
+    mon->socketpath = g_strdup_printf("%s/%s-socket", cfg->stateDir, vm->def->name);
+    if (!(priv->pidfile = virPidFileBuildPath(cfg->stateDir, vm->def->name)))
+        goto cleanup;
 
     /* prepare to launch Cloud-Hypervisor socket */
     if (!(cmd = chMonitorBuildSocketCmd(vm, mon->socketpath)))
         goto cleanup;
 
-    if (virFileMakePath(socketdir) < 0) {
+    if (virFileMakePath(cfg->stateDir) < 0) {
         virReportSystemError(errno,
                              _("Cannot create socket directory '%s'"),
-                             socketdir);
+                             cfg->stateDir);
         goto cleanup;
     }
     for (i = 0; i < priv->tapfdSize; i++) {
@@ -592,8 +629,43 @@ virCHMonitorNew(virDomainObjPtr vm, const char *socketdir)
                          VIR_COMMAND_PASS_FD_CLOSE_PARENT);
     }
 
-    /* launch Cloud-Hypervisor socket */
-    if (virCommandRunAsync(cmd, &mon->pid) < 0)
+    /* TODO enable */
+    virCommandSetPidFile(cmd, priv->pidfile);
+    virCommandDaemonize(cmd);
+    virCommandRequireHandshake(cmd);
+
+    rv = virCommandRun(cmd, NULL);
+
+    /* wait for cloud-hypervisor process to show up */
+    if (rv == 0) {
+        if ((rv = virPidFileReadPath(priv->pidfile, &vm->pid)) < 0) {
+            virReportSystemError(-rv,
+                                 _("Domain %s didn't show up"),
+                                 vm->def->name);
+            goto cleanup;
+        }
+        VIR_DEBUG("cloud-hypervisor vm=%p name=%s running with pid=%lld",
+                  vm, vm->def->name, (long long)vm->pid);
+    } else {
+        VIR_DEBUG("cloud-hypervisor vm=%p name=%s failed to spawn",
+                  vm, vm->def->name);
+        goto cleanup;
+    }
+    mon->pid = vm->pid;
+
+    VIR_DEBUG("Writing early domain status to disk");
+    if (virDomainObjSave(vm, driver->xmlopt, cfg->stateDir) < 0)
+        goto cleanup;
+
+    VIR_DEBUG("Waiting for handshake from child");
+    if (virCommandHandshakeWait(cmd) < 0) {
+        /* Read errors from child that occurred between fork and exec. */
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Process exited prior to exec"));
+        goto cleanup;
+    }
+
+    if (virCommandHandshakeNotify(cmd) < 0)
         goto cleanup;
 
     /* get a curl handle */
@@ -608,6 +680,9 @@ virCHMonitorNew(virDomainObjPtr vm, const char *socketdir)
 
         g_usleep(100 * 1000);
     }
+
+    if (virDomainObjSave(vm, driver->xmlopt, cfg->stateDir) < 0)
+        goto cleanup;
 
     /* now has its own reference */
     virObjectRef(mon);

@@ -124,3 +124,27 @@ chHostdevReAttachMediatedDevices(virCHDriverPtr driver,
 void
 chHostdevReAttachDomainDevices(virCHDriverPtr driver,
                                virDomainDefPtr def);
+
+int
+chHostdevUpdateActivePCIDevices(virCHDriverPtr driver,
+                                virDomainDefPtr def)
+
+int
+chHostdevUpdateActiveUSBDevices(virCHDriverPtr driver,
+                                virDomainDefPtr def)
+
+int
+chHostdevUpdateActiveSCSIDevices(virCHDriverPtr driver,
+                                 virDomainDefPtr def)
+
+int
+chHostdevUpdateActiveMediatedDevices(virCHDriverPtr driver,
+                                     virDomainDefPtr def)
+
+int
+chHostdevUpdateActiveNVMeDisks(virCHDriverPtr driver,
+                               virDomainDefPtr def);
+
+int
+chHostdevUpdateActiveDomainDevices(virCHDriverPtr driver,
+                                   virDomainDefPtr def);

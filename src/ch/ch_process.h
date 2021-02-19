@@ -35,4 +35,8 @@ int virCHProcessSetupVcpu(virDomainObjPtr vm,
 int virCHProcessSetupIOThread(virDomainObjPtr vm,
                              virDomainIOThreadInfoPtr iothread);
 
-int virCHProcessSetupEmulatorThread(virDomainObjPtr vm, pid_t tid);
+int
+virCHProcessSetupEmulatorThread(virDomainObjPtr vm, pid_t tid);
+
+void
+chProcessReconnectAll(virCHDriverPtr driver);

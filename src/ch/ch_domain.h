@@ -44,19 +44,21 @@ enum virCHDomainJob {
 VIR_ENUM_DECL(virCHDomainJob);
 
 
-struct virCHDomainJobObj {
+struct _virCHDomainJobObj {
     virCond cond;                       /* Use to coordinate jobs */
     enum virCHDomainJob active;        /* Currently running job */
     int owner;                          /* Thread which set current job */
 };
 
+typedef struct _virCHDomainJobObj virCHDomainJobObj;
+typedef virCHDomainJobObj *virCHDomainJobObjPtr;
 
 typedef struct _virCHDomainObjPrivate virCHDomainObjPrivate;
 typedef virCHDomainObjPrivate *virCHDomainObjPrivatePtr;
 struct _virCHDomainObjPrivate {
     pid_t initpid;
 
-    struct virCHDomainJobObj job;
+    virCHDomainJobObj job;
 
     virCHDriverPtr driver;
 
@@ -65,6 +67,8 @@ struct _virCHDomainObjPrivate {
     virChrdevsPtr devs;
 
     char *machineName;
+
+    char *pidfile;
 
     virBitmapPtr autoNodeset;
     virBitmapPtr autoCpuset;
@@ -105,8 +109,26 @@ virCHDomainObjBeginJob(virDomainObjPtr obj, enum virCHDomainJob job)
 void
 virCHDomainObjEndJob(virDomainObjPtr obj);
 
+void
+virCHDomainRemoveInactive(virCHDriverPtr driver,
+                             virDomainObjPtr vm);
+
+void
+virCHDomainRemoveInactiveJob(virCHDriverPtr driver,
+                             virDomainObjPtr vm);
+
+void
+virCHDomainRemoveInactiveJobLocked(virCHDriverPtr driver,
+                                   virDomainObjPtr vm);
+
+int virCHDomainRefreshThreadInfo(virDomainObjPtr vm);
+
 pid_t virCHDomainGetVcpuPid(virDomainObjPtr vm, unsigned int vcpuid);
 bool virCHDomainHasVcpuPids(virDomainObjPtr vm);
 
 char *virCHDomainGetMachineName(virDomainObjPtr vm);
 virDomainObjPtr virCHDomainObjFromDomain(virDomainPtr domain);
+
+int
+virCHDomainObjRestoreJob(virDomainObjPtr obj,
+                         virCHDomainJobObjPtr job);

@@ -956,6 +956,16 @@ static int chStateInitialize(bool privileged,
     if (chExtractVersion(ch_driver) < 0)
         goto cleanup;
 
+    /* Get all the running persistent or transient configs first */
+    if (virDomainObjListLoadAllConfigs(ch_driver->domains,
+                                       ch_driver->config->stateDir,
+                                       NULL, true,
+                                       ch_driver->xmlopt,
+                                       NULL, NULL) < 0)
+        goto cleanup;
+
+    chProcessReconnectAll(ch_driver);
+
     ch_driver->privileged = privileged;
 
     return VIR_DRV_STATE_INIT_COMPLETE;

@@ -24,17 +24,20 @@
 #include <fcntl.h>
 #include "datatypes.h"
 
+#include "ch_cgroup.h"
 #include "ch_domain.h"
+#include "ch_hostdev.h"
 #include "ch_interface.h"
 #include "ch_monitor.h"
 #include "ch_process.h"
-#include "ch_cgroup.h"
-#include "ch_hostdev.h"
+#include "nwfilter_conf.h"
 #include "virnuma.h"
 #include "viralloc.h"
 #include "virerror.h"
+#include "viridentity.h"
 #include "virjson.h"
 #include "virlog.h"
+#include "virpidfile.h"
 
 #define VIR_FROM_THIS VIR_FROM_CH
 
@@ -49,11 +52,10 @@ static virCHMonitorPtr virCHProcessConnectMonitor(virCHDriverPtr driver,
                                                   virDomainObjPtr vm)
 {
     virCHMonitorPtr monitor = NULL;
-    virCHDriverConfigPtr cfg = virCHDriverGetConfig(driver);
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
 
-    monitor = virCHMonitorNew(vm, cfg->stateDir);
+    monitor = virCHMonitorNew(vm, driver);
 
-    virObjectUnref(cfg);
     return monitor;
 }
 
@@ -350,6 +352,30 @@ virCHProcessUpdateConsole(virDomainObjPtr vm,
     virCHProcessUpdateConsoleDevice(vm, config, "serial");
 }
 
+static void
+virCHProcessUpdateStatus(virDomainObjPtr vm,
+                         virJSONValuePtr info)
+{
+    virJSONValuePtr state;
+    const char *value;
+
+    state = virJSONValueObjectGet(info, "state");
+    if (!state)
+        return;
+
+    value = virJSONValueGetString(state);
+
+    if (STREQ(value, "Created")) {
+        virDomainObjSetState(vm, VIR_DOMAIN_NOSTATE, 0);
+    } else if (STREQ(value, "Running")) {
+        virDomainObjSetState(vm, VIR_DOMAIN_RUNNING, 0);
+    } else if (STREQ(value, "Shutdown")) {
+        virDomainObjSetState(vm, VIR_DOMAIN_SHUTDOWN, 0);
+    } else if (STREQ(value, "Paused")) {
+        virDomainObjSetState(vm, VIR_DOMAIN_PMSUSPENDED, 0);
+    }
+}
+
 static int
 virCHProcessUpdateInfo(virDomainObjPtr vm)
 {
@@ -357,6 +383,8 @@ virCHProcessUpdateInfo(virDomainObjPtr vm)
     virCHDomainObjPrivatePtr priv = vm->privateData;
     if (virCHMonitorGetInfo(priv->monitor, &info) < 0)
         return -1;
+
+    virCHProcessUpdateStatus(vm, info);
 
     virCHProcessUpdateConsole(vm, info);
 
@@ -688,6 +716,7 @@ int virCHProcessStart(virCHDriverPtr driver,
                       virDomainRunningReason reason)
 {
     virCHDomainObjPrivatePtr priv = vm->privateData;
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
     g_autofree int *nicindexes = NULL;
     size_t nnicindexes = 0;
     int ret = -1;
@@ -721,7 +750,6 @@ int virCHProcessStart(virCHDriverPtr driver,
         }
     }
 
-    vm->pid = priv->monitor->pid;
     vm->def->id = vm->pid;
     priv->machineName = virCHDomainGetMachineName(vm);
 
@@ -754,6 +782,9 @@ int virCHProcessStart(virCHDriverPtr driver,
 
     virDomainObjSetState(vm, VIR_DOMAIN_RUNNING, reason);
 
+    if (virDomainObjSave(vm, driver->xmlopt, cfg->stateDir) < 0)
+        goto cleanup;
+
     return 0;
 
  cleanup:
@@ -763,7 +794,238 @@ int virCHProcessStart(virCHDriverPtr driver,
     return ret;
 }
 
-int virCHProcessStop(virCHDriverPtr driver G_GNUC_UNUSED,
+static int
+virCHConnectMonitor(virCHDriverPtr driver, virDomainObjPtr vm)
+{
+    virCHDomainObjPrivatePtr priv = vm->privateData;
+    virCHMonitorPtr mon = NULL;
+
+    mon = virCHMonitorOpen(vm, driver);
+
+    priv->monitor = mon;
+
+    if (priv->monitor == NULL) {
+        VIR_INFO("Failed to connect monitor for %s", vm->def->name);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int
+virCHProcessUpdateState(virDomainObjPtr vm)
+{
+    if (virCHProcessUpdateInfo(vm) < 0)
+        return -1;
+
+    return 0;
+}
+
+struct virCHProcessReconnectData {
+    virCHDriverPtr driver;
+    virDomainObjPtr obj;
+    virIdentityPtr identity;
+};
+/*
+ * Open an existing VM's monitor, re-detect VCPU threads
+ *
+ * This function also inherits a locked and ref'd domain object.
+ *
+ * This function needs to:
+ * 1. Enter job
+ * 2. reconnect to monitor
+ * 4. continue reconnect process
+ * 5. EndJob
+ *
+ */
+static void
+virCHProcessReconnect(void *opaque)
+{
+    struct virCHProcessReconnectData *data = opaque;
+    virCHDriverPtr driver = data->driver;
+    virDomainObjPtr obj = data->obj;
+    virCHDomainObjPrivatePtr priv;
+    virCHDomainJobObj oldjob;
+    int state;
+    int reason;
+    g_autoptr(virCHDriverConfig) cfg = NULL;
+    bool jobStarted = false;
+
+    virIdentitySetCurrent(data->identity);
+    g_clear_object(&data->identity);
+    g_free(data);
+
+    virCHDomainObjRestoreJob(obj, &oldjob);
+
+    cfg = virCHDriverGetConfig(driver);
+    priv = obj->privateData;
+
+    if (virCHDomainObjBeginJob(obj, CH_JOB_MODIFY) < 0)
+        goto error;
+    jobStarted = true;
+
+    /* XXX If we ever gonna change pid file pattern, come up with
+     * some intelligence here to deal with old paths. */
+    if (!(priv->pidfile = virPidFileBuildPath(cfg->stateDir, obj->def->name)))
+        goto error;
+
+    obj->def->id = obj->pid;
+    virReportError(VIR_ERR_INTERNAL_ERROR, "%s-%d",
+                   "pid is", obj->pid);
+
+    if (chHostdevUpdateActiveDomainDevices(driver, obj->def) < 0)
+        goto error;
+
+    if (virCHConnectMonitor(driver, obj) < 0)
+        goto error;
+
+    priv->machineName = virCHDomainGetMachineName(obj);
+    if (!priv->machineName)
+        goto error;
+
+    if (chConnectCgroup(obj) < 0)
+        goto error;
+
+    if (virCHProcessUpdateState(obj) < 0)
+        goto error;
+
+    state = virDomainObjGetState(obj, &reason);
+
+    /* In case the domain shutdown while we were not running,
+     * we need to finish the shutdown process.
+     */
+    if (state == VIR_DOMAIN_SHUTDOWN ||
+        (state == VIR_DOMAIN_PAUSED &&
+         reason == VIR_DOMAIN_PAUSED_SHUTTING_DOWN)) {
+        VIR_DEBUG("Finishing shutdown sequence for domain %s",
+                  obj->def->name);
+        virCHProcessStop(driver, obj, VIR_DOMAIN_SHUTOFF_DAEMON);
+        goto cleanup;
+    }
+
+    /* update domain state XML with possibly updated state in virDomainObj */
+    if (virDomainObjSave(obj, driver->xmlopt, cfg->stateDir) < 0)
+        goto error;
+
+ cleanup:
+    if (jobStarted) {
+        if (!virDomainObjIsActive(obj))
+            virCHDomainRemoveInactive(driver, obj);
+        virCHDomainObjEndJob(obj);
+    } else {
+        if (!virDomainObjIsActive(obj))
+            virCHDomainRemoveInactiveJob(driver, obj);
+    }
+    virDomainObjEndAPI(&obj);
+    virIdentitySetCurrent(NULL);
+    return;
+
+ error:
+    if (virDomainObjIsActive(obj)) {
+        /* We can't get the monitor back, so must kill the VM
+         * to remove danger of it ending up running twice if
+         * user tries to start it again later.
+         * If BeginJob failed, we jumped here without a job, let's hope another
+         * thread didn't have a chance to start playing with the domain yet
+         * (it's all we can do anyway).
+         */
+        virCHProcessStop(driver, obj, VIR_DOMAIN_SHUTOFF_UNKNOWN);
+    }
+    goto cleanup;
+}
+
+static int
+chProcessReconnectHelper(virDomainObjPtr obj,
+                         void *opaque)
+{
+    virThread thread;
+    struct virCHProcessReconnectData *src = opaque;
+    struct virCHProcessReconnectData *data;
+    g_autofree char *name = NULL;
+
+    /* If the VM was inactive, we don't need to reconnect */
+    if (!obj->pid)
+        return 0;
+
+    data = g_new0(struct virCHProcessReconnectData, 1);
+
+    memcpy(data, src, sizeof(*data));
+    data->obj = obj;
+    data->identity = virIdentityGetCurrent();
+
+    virNWFilterReadLockFilterUpdates();
+
+    /* this lock and reference will be eventually transferred to the thread
+     * that handles the reconnect */
+    virObjectLock(obj);
+    virObjectRef(obj);
+
+    name = g_strdup_printf("init-%s", obj->def->name);
+
+    if (virThreadCreateFull(&thread, false, virCHProcessReconnect,
+                            name, false, data) < 0) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Could not create thread. CH initialization "
+                         "might be incomplete"));
+        /* We can't spawn a thread, kill ch.
+         * It's safe to call virCHProcessStop without a job here since there
+         * is no thread that could be doing anything else with the same domain
+         * object.
+         */
+        virCHProcessStop(src->driver, obj, VIR_DOMAIN_SHUTOFF_FAILED);
+        virCHDomainRemoveInactiveJobLocked(src->driver, obj);
+
+        virDomainObjEndAPI(&obj);
+        virNWFilterUnlockFilterUpdates();
+        g_clear_object(&data->identity);
+        g_free(data);
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * chProcessReconnectAll
+ *
+ * Try to re-open the resources for live VMs that we care
+ * about.
+ */
+void
+chProcessReconnectAll(virCHDriverPtr driver)
+{
+    struct virCHProcessReconnectData data = {.driver = driver};
+    virDomainObjListForEach(driver->domains, true,
+                            chProcessReconnectHelper, &data);
+}
+
+/**
+ * chProcessRemoveDomainStatus
+ *
+ * remove all state files of a domain from statedir
+ */
+static void
+chProcessRemoveDomainStatus(virCHDriverPtr driver,
+                            virDomainObjPtr vm)
+{
+    g_autofree char *file = NULL;
+    virCHDomainObjPrivatePtr priv = vm->privateData;
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
+
+    file = g_strdup_printf("%s/%s.xml", cfg->stateDir, vm->def->name);
+
+    if (unlink(file) < 0 && errno != ENOENT && errno != ENOTDIR)
+        VIR_WARN("Failed to remove domain XML for %s: %s",
+                 vm->def->name, g_strerror(errno));
+
+    if (priv->pidfile &&
+        unlink(priv->pidfile) < 0 &&
+        errno != ENOENT)
+        VIR_WARN("Failed to remove PID file for %s: %s",
+                 vm->def->name, g_strerror(errno));
+}
+
+int virCHProcessStop(virCHDriverPtr driver,
                      virDomainObjPtr vm,
                      virDomainShutoffReason reason)
 {
@@ -795,6 +1057,7 @@ retry:
 
     vm->pid = -1;
     vm->def->id = -1;
+    chProcessRemoveDomainStatus(driver, vm);
 
     virDomainObjSetState(vm, VIR_DOMAIN_SHUTOFF, reason);
 
