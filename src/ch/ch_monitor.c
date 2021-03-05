@@ -1048,8 +1048,8 @@ virCHMonitorNew(virDomainObjPtr vm, virCHDriverPtr driver)
         goto cleanup;
     }
     mon->monitor_fd = monitor_fds[0];
-    virCommandAddArg(cmd, "--monitor-fd");
-    virCommandAddArgFormat(cmd, "%d", monitor_fds[1]);
+    virCommandAddArg(cmd, "--event-monitor");
+    virCommandAddArgFormat(cmd, "fd=%d", monitor_fds[1]);
     virCommandPassFD(cmd, monitor_fds[1], VIR_COMMAND_PASS_FD_CLOSE_PARENT);
 
     /* TODO enable */
