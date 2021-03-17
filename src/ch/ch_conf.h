@@ -30,6 +30,7 @@
 
 #define CH_STATE_DIR RUNSTATEDIR "/libvirt/ch"
 #define CH_LOG_DIR LOCALSTATEDIR "/log/libvirt/ch"
+#define CH_CONF_BASE_DIR SYSCONFDIR "/libvirt/ch"
 
 typedef struct _virCHDriver virCHDriver;
 typedef virCHDriver *virCHDriverPtr;
@@ -42,7 +43,8 @@ struct _virCHDriverConfig {
 
     char *stateDir;
     char *logDir;
-
+    char *configDir;
+    char *autostartDir;
     int cgroupControllers;
 
     bool macFilter;

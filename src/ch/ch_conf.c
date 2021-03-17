@@ -144,6 +144,8 @@ virCHDriverConfigNew(void)
 
     cfg->stateDir = g_strdup(CH_STATE_DIR);
     cfg->logDir = g_strdup(CH_LOG_DIR);
+    cfg->configDir = g_strdup(CH_CONF_BASE_DIR);
+    cfg->autostartDir = g_strdup_printf("%s/autostart", cfg->configDir);
 
     cfg->cgroupControllers = -1; /* Auto detect */
 

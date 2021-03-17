@@ -1857,6 +1857,101 @@ chDomainSetVcpusFlags(virDomainPtr dom,
     return ret;
 }
 
+static int chDomainSetAutostart(virDomainPtr dom,
+                                  int autostart)
+{
+    virCHDriverPtr driver = dom->conn->privateData;
+    virDomainObjPtr vm;
+    g_autofree char *configFile = NULL;
+    g_autofree char *autostartLink = NULL;
+    int ret = -1;
+    g_autoptr(virCHDriverConfig) cfg = NULL;
+
+    if (!(vm = virCHDomainObjFromDomain(dom)))
+        return -1;
+
+    cfg = virCHDriverGetConfig(driver);
+
+    if (virDomainSetAutostartEnsureACL(dom->conn, vm->def) < 0)
+        goto cleanup;
+
+    if (!vm->persistent) {
+        virReportError(VIR_ERR_OPERATION_INVALID,
+                       "%s", _("cannot set autostart for transient domain"));
+        goto cleanup;
+    }
+
+    autostart = (autostart != 0);
+
+    if (vm->autostart != autostart) {
+        if (virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) < 0)
+            goto cleanup;
+
+        if (!(configFile = virDomainConfigFile(cfg->stateDir, vm->def->name)))
+            goto endjob;
+
+        if (!(autostartLink = virDomainConfigFile(cfg->autostartDir,
+                                                  vm->def->name)))
+            goto endjob;
+
+        if (autostart) {
+            if (virFileMakePath(cfg->autostartDir) < 0) {
+                virReportSystemError(errno,
+                                     _("cannot create autostart directory %s"),
+                                     cfg->autostartDir);
+                goto endjob;
+            }
+
+            if (symlink(configFile, autostartLink) < 0) {
+                virReportSystemError(errno,
+                                     _("Failed to create symlink '%s to '%s'"),
+                                     autostartLink, configFile);
+                goto endjob;
+            }
+        } else {
+            if (unlink(autostartLink) < 0 &&
+                errno != ENOENT &&
+                errno != ENOTDIR) {
+                virReportSystemError(errno,
+                                     _("Failed to delete symlink '%s'"),
+                                     autostartLink);
+                goto endjob;
+            }
+        }
+
+        vm->autostart = autostart;
+
+ endjob:
+        virCHDomainObjEndJob(vm);
+    }
+    ret = 0;
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
+}
+
+static int chDomainGetAutostart(virDomainPtr dom,
+                                  int *autostart)
+{
+    virDomainObjPtr vm;
+    int ret = -1;
+
+    if (!(vm = virCHDomainObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainGetAutostartEnsureACL(dom->conn, vm->def) < 0)
+        goto cleanup;
+
+    *autostart = vm->autostart;
+    ret = 0;
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
+};
+
+
 /* Function Tables */
 static virHypervisorDriver chHypervisorDriver = {
     .name = "CH",
@@ -1906,6 +2001,9 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainSetNumaParameters = chDomainSetNumaParameters,   /* 6.7.0 */
     .domainGetNumaParameters = chDomainGetNumaParameters,   /* 6.7.0 */
     .domainSetVcpusFlags = chDomainSetVcpusFlags,           /* 6.7.0 */
+    .domainGetAutostart = chDomainGetAutostart,             /* 6.7.0 */
+    .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
+
 };
 
 static virConnectDriver chConnectDriver = {
