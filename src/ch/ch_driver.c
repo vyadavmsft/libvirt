@@ -865,7 +865,8 @@ chDomainOpenConsole(virDomainPtr dom,
                 chr = vm->def->parallels[i];
         }
     } else {
-        if (vm->def->nconsoles)
+        if (vm->def->nconsoles &&
+            vm->def->consoles[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY)
             chr = vm->def->consoles[0];
         else if (vm->def->nserials)
             chr = vm->def->serials[0];

@@ -114,19 +114,25 @@ virCHMonitorBuildPTYJson(virJSONValuePtr content, virDomainDefPtr vmdef)
     virJSONValuePtr ptys = virJSONValueNewObject();
 
     if (vmdef->nconsoles || vmdef->nserials) {
-        if (vmdef->nconsoles > 1) {
+        if ((vmdef->nconsoles &&
+             vmdef->consoles[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY)
+            && (vmdef->nserials &&
+                vmdef->serials[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY)) {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("Only a single console or serial can be configured for this domain"));
+            return -1;
+        } else if (vmdef->nconsoles > 1) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("Only a single console can be configured for this domain"));
             return -1;
-        }
-        if (vmdef->nserials > 1) {
+        } else if (vmdef->nserials > 1) {
             virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
                            _("Only a single serial can be configured for this domain"));
             return -1;
         }
     }
 
-    if (vmdef->nconsoles) {
+    if (vmdef->nconsoles && vmdef->consoles[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY) {
         if (virJSONValueObjectAppendString(ptyc, "mode", "Pty") < 0)
             goto cleanup;
     } else {
@@ -134,7 +140,7 @@ virCHMonitorBuildPTYJson(virJSONValuePtr content, virDomainDefPtr vmdef)
             goto cleanup;
     }
 
-    if (vmdef->nserials) {
+    if (vmdef->nserials && vmdef->serials[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY) {
         if (virJSONValueObjectAppendString(ptys, "mode", "Pty") < 0)
             goto cleanup;
     } else {
