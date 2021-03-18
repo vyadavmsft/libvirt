@@ -252,7 +252,9 @@ virCHMonitorBuildDiskJson(virJSONValuePtr disks, virDomainDiskDefPtr diskdef)
 {
     virJSONValuePtr disk;
 
-    if (diskdef->src != NULL && diskdef->src->path != NULL) {
+    if (diskdef->src != NULL &&
+        diskdef->src->path != NULL &&
+        diskdef->src->type == VIR_STORAGE_TYPE_FILE) {
         disk = virJSONValueNewObject();
         if (!virFileExists(diskdef->src->path)) {
             virReportError(VIR_ERR_INVALID_ARG,
