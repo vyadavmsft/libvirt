@@ -256,6 +256,11 @@ virCHMonitorBuildDiskJson(virJSONValuePtr disks, virDomainDiskDefPtr diskdef)
         diskdef->src->path != NULL &&
         diskdef->src->type == VIR_STORAGE_TYPE_FILE) {
         disk = virJSONValueNewObject();
+        if (diskdef->bus != VIR_DOMAIN_DISK_BUS_VIRTIO) {
+            virReportError(VIR_ERR_INVALID_ARG,
+                           _("Only virtio bus types are supported for '%s'"), diskdef->src->path);
+            goto cleanup;
+        }
         if (!virFileExists(diskdef->src->path)) {
             virReportError(VIR_ERR_INVALID_ARG,
                            _("failed to find disk '%s'"), diskdef->src->path);
