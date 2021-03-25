@@ -319,8 +319,8 @@ virCHMonitorBuildNetJson(virDomainObjPtr vm, virJSONValuePtr nets, virDomainNetD
 
     switch (netType) {
     case VIR_DOMAIN_NET_TYPE_ETHERNET:
-        if (netdef->guestIP.nips == 1) {
-            const virNetDevIPAddr *ip = netdef->guestIP.ips[0];
+        if (netdef->hostIP.nips == 1) {
+            const virNetDevIPAddr *ip = netdef->hostIP.ips[0];
             g_autofree char *addr = NULL;
             virSocketAddr netmask;
             g_autofree char *netmaskStr = NULL;
