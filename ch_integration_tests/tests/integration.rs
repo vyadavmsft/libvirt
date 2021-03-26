@@ -8,12 +8,8 @@
 extern crate lazy_static;
 
 #[cfg(test)]
-#[allow(dead_code)]
-mod test_infra;
-
-#[cfg(test)]
 mod tests {
-    use crate::test_infra::{
+    use test_infra::{
         DiskConfig, DiskType, GuestNetworkConfig, UbuntuDiskConfig, WaitForBootError,
     };
     use std::io::{self, Write};

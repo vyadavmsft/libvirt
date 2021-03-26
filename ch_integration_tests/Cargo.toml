@@ -8,9 +8,10 @@ license = "LICENSE-APACHE"
 [dev-dependencies]
 dirs = "3.0.1"
 epoll = "4.3.1"
-libc = "0.2.90"
+libc = ">=0.2.91"
 lazy_static= "1.4.0"
 ssh2 = "0.9.1"
+test_infra = { git = "https://github.com/cloud-hypervisor/cloud-hypervisor" }
 uuid = { version = "0.8", features = ["v4"] }
 vmm-sys-util = "0.8.0"
 wait-timeout = "0.2.0"
