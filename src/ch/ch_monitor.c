@@ -721,6 +721,7 @@ static int virCHMonitorProcessEvent(virCHMonitorPtr mon,
     const char *source;
     virDomainObjPtr vm = mon->vm;
     virCHMonitorEvent ev;
+    g_autofree char *timestamp = NULL;
 
     if (virJSONValueObjectHasKey(eventJSON, "source") == 0) {
         VIR_WARN("Invalid JSON from monitor, no source key");
@@ -735,6 +736,10 @@ static int virCHMonitorProcessEvent(virCHMonitorPtr mon,
 
     ev = virCHMonitorEventFromString(source, event);
     VIR_DEBUG("Source: %s Event: %s, ev: %d", source, event, ev);
+    virCHDriverPtr driver = CH_DOMAIN_PRIVATE(vm)->driver;
+
+    if ((timestamp = virTimeStringNow()) != NULL)
+        chDomainLogAppendMessage(driver, vm, "%s: Source: %s Event: %s, ev: %d\n", timestamp,source, event, ev);
     switch (ev) {
         case virCHMonitorVmEventBooted:
         case virCHMonitorVmEventResumed:
@@ -752,7 +757,6 @@ static int virCHMonitorProcessEvent(virCHMonitorPtr mon,
         case virCHMonitorVmmEventShutdown: // shutdown inside vmm
         case virCHMonitorVmEventShutdown:
             {
-                virCHDriverPtr driver = CH_DOMAIN_PRIVATE(vm)->driver;
                 g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
                 virDomainState state;
 
@@ -1163,6 +1167,8 @@ virCHMonitorNew(virDomainObjPtr vm, virCHDriverPtr driver)
     virCHMonitorPtr mon = NULL;
     virCommandPtr cmd = NULL;
     int i;
+    int logfile = -1;
+    g_autoptr(chDomainLogContext) logCtxt = NULL;
 
     if (virCHMonitorInitialize() < 0)
         goto cleanup;
@@ -1211,8 +1217,23 @@ virCHMonitorNew(virDomainObjPtr vm, virCHDriverPtr driver)
 
     virCommandAddArg(cmd, "--event-monitor");
     virCommandAddArgFormat(cmd, "path=%s", mon->monitorpath);
+    if (virFileMakePath(cfg->logDir) < 0) {
+        virReportSystemError(errno,
+                             _("cannot create log directory %s"),
+                             cfg->logDir);
+        goto cleanup;
+    }
 
+    VIR_DEBUG("Creating domain log file");
+    if (!(logCtxt = chDomainLogContextNew(driver, vm,
+                                            CH_DOMAIN_LOG_CONTEXT_MODE_START))) {
+        virLastErrorPrefixMessage("%s", _("can't connect to virtlogd"));
+        goto cleanup;
+    }
+    logfile = chDomainLogContextGetWriteFD(logCtxt);
     /* TODO enable */
+    virCommandSetOutputFD(cmd, &logfile);
+    virCommandSetErrorFD(cmd, &logfile);
     virCommandSetPidFile(cmd, priv->pidfile);
     virCommandDaemonize(cmd);
     virCommandRequireHandshake(cmd);

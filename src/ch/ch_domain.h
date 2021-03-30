@@ -20,10 +20,12 @@
 
 #pragma once
 
+#include <glib-object.h>
 #include "ch_conf.h"
 #include "ch_monitor.h"
 #include "virchrdev.h"
 #include "vircgroup.h"
+#include "logging/log_manager.h"
 
 #define CH_DEV_VFIO "/dev/vfio/vfio"
 
@@ -43,7 +45,16 @@ enum virCHDomainJob {
 };
 VIR_ENUM_DECL(virCHDomainJob);
 
+typedef enum {
+    CH_DOMAIN_LOG_CONTEXT_MODE_START,
+    CH_DOMAIN_LOG_CONTEXT_MODE_ATTACH,
+    CH_DOMAIN_LOG_CONTEXT_MODE_STOP,
+} chDomainLogContextMode;
 
+
+#define CH_TYPE_DOMAIN_LOG_CONTEXT ch_domain_log_context_get_type()
+G_DECLARE_FINAL_TYPE(chDomainLogContext, ch_domain_log_context, CH, DOMAIN_LOG_CONTEXT, GObject);
+typedef chDomainLogContext *chDomainLogContextPtr;
 struct _virCHDomainJobObj {
     virCond cond;                       /* Use to coordinate jobs */
     enum virCHDomainJob active;        /* Currently running job */
@@ -103,6 +114,17 @@ struct _virCHDomainVcpuPrivate {
 extern virDomainXMLPrivateDataCallbacks virCHDriverPrivateDataCallbacks;
 extern virDomainDefParserConfig virCHDriverDomainDefParserConfig;
 
+
+chDomainLogContextPtr chDomainLogContextNew(virCHDriverPtr driver,
+                                                virDomainObjPtr vm,
+                                                chDomainLogContextMode mode);
+int chDomainLogContextGetWriteFD(chDomainLogContextPtr ctxt);
+
+
+int chDomainLogAppendMessage(virCHDriverPtr driver,
+                               virDomainObjPtr vm,
+                               const char *fmt,
+                               ...) G_GNUC_PRINTF(3, 4);
 int
 virCHDomainObjBeginJob(virDomainObjPtr obj, enum virCHDomainJob job)
     G_GNUC_WARN_UNUSED_RESULT;

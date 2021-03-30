@@ -23,10 +23,14 @@
 #include "ch_domain.h"
 #include "datatypes.h"
 #include "domain_driver.h"
+#include "virfile.h"
 #include "viralloc.h"
 #include "virlog.h"
 #include "virtime.h"
 #include "virsystemd.h"
+#include "virutil.h"
+
+#include <fcntl.h>
 
 #define VIR_FROM_THIS VIR_FROM_CH
 
@@ -40,6 +44,41 @@ VIR_ENUM_IMPL(virCHDomainJob,
 
 VIR_LOG_INIT("ch.ch_domain");
 
+struct _chDomainLogContext {
+    GObject parent;
+
+    int writefd;
+    int readfd; /* Only used if manager == NULL */
+    off_t pos;
+    ino_t inode; /* Only used if manager != NULL */
+    char *path;
+    virLogManagerPtr manager;
+};
+static void chDomainLogContextFinalize(GObject *obj);
+static void ch_domain_log_context_init(chDomainLogContext *logctxt G_GNUC_UNUSED)
+{
+}
+static void ch_domain_log_context_class_init(chDomainLogContextClass *klass)
+{
+    GObjectClass *obj = G_OBJECT_CLASS(klass);
+
+    obj->finalize = chDomainLogContextFinalize;
+}
+
+G_DEFINE_TYPE(chDomainLogContext, ch_domain_log_context, G_TYPE_OBJECT);
+
+static void
+chDomainLogContextFinalize(GObject *object)
+{
+    chDomainLogContextPtr ctxt = CH_DOMAIN_LOG_CONTEXT(object);
+    VIR_DEBUG("ctxt=%p", ctxt);
+
+    virLogManagerFree(ctxt->manager);
+    g_free(ctxt->path);
+    VIR_FORCE_CLOSE(ctxt->writefd);
+    VIR_FORCE_CLOSE(ctxt->readfd);
+    G_OBJECT_CLASS(ch_domain_log_context_parent_class)->finalize(object);
+}
 static int
 virCHDomainObjInitJob(virCHDomainObjPrivatePtr priv)
 {
@@ -485,3 +524,146 @@ virCHDomainObjFromDomain(virDomainPtr domain)
 
     return vm;
 }
+
+
+chDomainLogContextPtr chDomainLogContextNew(virCHDriverPtr driver,
+                                                virDomainObjPtr vm,
+                                                chDomainLogContextMode mode)
+{
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
+    chDomainLogContextPtr ctxt = CH_DOMAIN_LOG_CONTEXT(g_object_new(CH_TYPE_DOMAIN_LOG_CONTEXT, NULL));
+
+    VIR_DEBUG("Context new %p stdioLogD=%d", ctxt, cfg->stdioLogD);
+    ctxt->writefd = -1;
+    ctxt->readfd = -1;
+
+    ctxt->path = g_strdup_printf("%s/%s.log", cfg->logDir, vm->def->name);
+
+    if (cfg->stdioLogD) {
+        ctxt->manager = virLogManagerNew(driver->privileged);
+        if (!ctxt->manager)
+            goto error;
+
+        ctxt->writefd = virLogManagerDomainOpenLogFile(ctxt->manager,
+                                                       "ch",
+                                                       vm->def->uuid,
+                                                       vm->def->name,
+                                                       ctxt->path,
+                                                       0,
+                                                       &ctxt->inode,
+                                                       &ctxt->pos);
+        if (ctxt->writefd < 0)
+            goto error;
+    } else {
+        if ((ctxt->writefd = open(ctxt->path, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR)) < 0) {
+            virReportSystemError(errno, _("failed to create logfile %s"),
+                                 ctxt->path);
+            goto error;
+        }
+        if (virSetCloseExec(ctxt->writefd) < 0) {
+            virReportSystemError(errno, _("failed to set close-on-exec flag on %s"),
+                                 ctxt->path);
+            goto error;
+        }
+
+        /* For unprivileged startup we must truncate the file since
+         * we can't rely on logrotate. We don't use O_TRUNC since
+         * it is better for SELinux policy if we truncate afterwards */
+        if (mode == CH_DOMAIN_LOG_CONTEXT_MODE_START &&
+            !driver->privileged &&
+            ftruncate(ctxt->writefd, 0) < 0) {
+            virReportSystemError(errno, _("failed to truncate %s"),
+                                 ctxt->path);
+            goto error;
+        }
+
+        if (mode == CH_DOMAIN_LOG_CONTEXT_MODE_START) {
+            if ((ctxt->readfd = open(ctxt->path, O_RDONLY, S_IRUSR | S_IWUSR)) < 0) {
+                virReportSystemError(errno, _("failed to open logfile %s"),
+                                     ctxt->path);
+                goto error;
+            }
+            if (virSetCloseExec(ctxt->readfd) < 0) {
+                virReportSystemError(errno, _("failed to set close-on-exec flag on %s"),
+                                     ctxt->path);
+                goto error;
+            }
+        }
+
+        if ((ctxt->pos = lseek(ctxt->writefd, 0, SEEK_END)) < 0) {
+            virReportSystemError(errno, _("failed to seek in log file %s"),
+                                 ctxt->path);
+            goto error;
+        }
+    }
+
+    return ctxt;
+
+ error:
+    g_clear_object(&ctxt);
+    return NULL;
+}
+
+/**
+ * chDomainLogAppendMessage:
+ *
+ * This is a best-effort attempt to add a log message to the ch log file
+ * either by using virtlogd or the legacy approach */
+int
+chDomainLogAppendMessage(virCHDriverPtr driver,
+                           virDomainObjPtr vm,
+                           const char *fmt,
+                           ...)
+{
+    g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
+    virLogManagerPtr manager = NULL;
+    va_list ap;
+    g_autofree char *path = NULL;
+    int writefd = -1;
+    g_autofree char *message = NULL;
+    int ret = -1;
+
+    va_start(ap, fmt);
+
+    message = g_strdup_vprintf(fmt, ap);
+
+    VIR_DEBUG("Append log message (vm='%s' message='%s) stdioLogD=%d",
+              vm->def->name, message, cfg->stdioLogD);
+
+    path = g_strdup_printf("%s/%s.log", cfg->logDir, vm->def->name);
+
+    if (cfg->stdioLogD) {
+        if (!(manager = virLogManagerNew(driver->privileged)))
+            goto cleanup;
+
+        if (virLogManagerDomainAppendMessage(manager, "ch", vm->def->uuid,
+                                             vm->def->name, path, message, 0) < 0)
+            goto cleanup;
+    } else {
+        if ((writefd = open(path, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR)) < 0) {
+            virReportSystemError(errno, _("failed to create logfile %s"),
+                                 path);
+            goto cleanup;
+        }
+
+        if (safewrite(writefd, message, strlen(message)) < 0)
+            goto cleanup;
+    }
+
+    ret = 0;
+
+ cleanup:
+    va_end(ap);
+    VIR_FORCE_CLOSE(writefd);
+    virLogManagerFree(manager);
+
+    return ret;
+}
+
+
+int chDomainLogContextGetWriteFD(chDomainLogContextPtr ctxt)
+{
+    return ctxt->writefd;
+}
+
+

@@ -46,7 +46,8 @@ struct _virCHDriverConfig {
     char *configDir;
     char *autostartDir;
     int cgroupControllers;
-
+    bool logTimestamp;
+    bool stdioLogD;
     bool macFilter;
 };
 
