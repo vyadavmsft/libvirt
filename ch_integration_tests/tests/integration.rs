@@ -182,6 +182,13 @@ mod tests {
                 .parse()
                 .map_err(Error::Parsing)
         }
+
+        fn get_total_memory(&self) -> Result<u32, Error> {
+            self.ssh_command("grep MemTotal /proc/meminfo | grep -o \"[0-9]*\"")?
+                .trim()
+                .parse()
+                .map_err(Error::Parsing)
+        }
     }
 
     fn spawn_libvirtd() -> io::Result<Child> {
@@ -239,6 +246,45 @@ mod tests {
                 .starts_with(&format!("Domain {} created", guest.vm_name)));
 
             guest.wait_vm_boot(None).unwrap();
+        });
+
+        spawn_virsh(&["destroy", &guest.vm_name])
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        libvirtd.kill().unwrap();
+        let libvirtd_output = libvirtd.wait_with_output().unwrap();
+
+        eprintln!(
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+        );
+
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_huge_memory() {
+        cleanup_libvirt_state();
+        let mut libvirtd = spawn_libvirtd().unwrap();
+        thread::sleep(std::time::Duration::new(5, 0));
+
+        let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
+        let guest = Guest::new(&mut disk);
+
+        let domain_path = guest.create_domain(DEFAULT_VCPUS, 128 << 30);
+
+        let r = std::panic::catch_unwind(|| {
+            spawn_virsh(&["create", domain_path.to_str().unwrap()])
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            guest.wait_vm_boot(None).unwrap();
+
+            assert!(guest.get_total_memory().unwrap_or_default() > 128_000_000);
         });
 
         spawn_virsh(&["destroy", &guest.vm_name])
