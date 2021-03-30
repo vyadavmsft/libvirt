@@ -211,7 +211,7 @@ mod tests {
 
         spawn_virsh(&["destroy", &guest.vm_name])
             .unwrap()
-            .wait_with_output()
+            .wait()
             .unwrap();
 
         libvirtd.kill().unwrap();
