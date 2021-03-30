@@ -31,6 +31,11 @@ mod tests {
         static ref NEXT_VM_ID: Mutex<u8> = Mutex::new(1);
     }
 
+    #[derive(Debug)]
+    enum Error {
+        WaitForBoot(WaitForBootError),
+    }
+
     struct Guest<'a> {
         tmp_dir: TempDir,
         vm_name: String,
@@ -150,9 +155,10 @@ mod tests {
             Self::new_from_ip_range(disk_config, "192.168", id)
         }
 
-        #[allow(dead_code)]
-        fn wait_vm_boot(&self, custom_timeout: Option<i32>) -> Result<(), WaitForBootError> {
-            self.network.wait_vm_boot(custom_timeout)
+        fn wait_vm_boot(&self, custom_timeout: Option<i32>) -> Result<(), Error> {
+            self.network
+                .wait_vm_boot(custom_timeout)
+                .map_err(Error::WaitForBoot)
         }
     }
 
@@ -209,9 +215,9 @@ mod tests {
                 .unwrap()
                 .trim()
                 .starts_with(&format!("Domain {} created", guest.vm_name)));
-        });
 
-        thread::sleep(std::time::Duration::new(15, 0));
+            guest.wait_vm_boot(None).unwrap();
+        });
 
         spawn_virsh(&["destroy", &guest.vm_name])
             .unwrap()
