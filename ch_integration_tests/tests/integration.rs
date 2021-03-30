@@ -9,14 +9,14 @@ extern crate lazy_static;
 
 #[cfg(test)]
 mod tests {
-    use test_infra::{
-        DiskConfig, DiskType, GuestNetworkConfig, UbuntuDiskConfig, WaitForBootError,
-    };
     use std::io::{self, Write};
     use std::process::{Child, Command, Stdio};
     use std::sync::Mutex;
     use std::thread;
     use std::{ffi::OsStr, path::PathBuf};
+    use test_infra::{
+        DiskConfig, DiskType, GuestNetworkConfig, UbuntuDiskConfig, WaitForBootError,
+    };
 
     use uuid::Uuid;
     use vmm_sys_util::tempdir::TempDir;
@@ -179,29 +179,6 @@ mod tests {
     }
 
     #[test]
-    fn test_uri() {
-        cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
-        thread::sleep(std::time::Duration::new(5, 0));
-
-        let output = spawn_virsh(&["uri"]).unwrap().wait_with_output().unwrap();
-
-        libvirtd.kill().unwrap();
-        let libvirtd_output = libvirtd.wait_with_output().unwrap();
-
-        eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
-            std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
-        );
-
-        assert_eq!(
-            std::str::from_utf8(&output.stdout).unwrap().trim(),
-            "ch:///system"
-        );
-    }
-
-    #[test]
     fn test_create_vm() {
         cleanup_libvirt_state();
         let mut libvirtd = spawn_libvirtd().unwrap();
@@ -247,5 +224,28 @@ mod tests {
         );
 
         assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_uri() {
+        cleanup_libvirt_state();
+        let mut libvirtd = spawn_libvirtd().unwrap();
+        thread::sleep(std::time::Duration::new(5, 0));
+
+        let output = spawn_virsh(&["uri"]).unwrap().wait_with_output().unwrap();
+
+        libvirtd.kill().unwrap();
+        let libvirtd_output = libvirtd.wait_with_output().unwrap();
+
+        eprintln!(
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+        );
+
+        assert_eq!(
+            std::str::from_utf8(&output.stdout).unwrap().trim(),
+            "ch:///system"
+        );
     }
 }
