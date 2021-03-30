@@ -14,9 +14,7 @@ mod tests {
     use std::sync::Mutex;
     use std::thread;
     use std::{ffi::OsStr, path::PathBuf};
-    use test_infra::{
-        DiskConfig, DiskType, GuestNetworkConfig, UbuntuDiskConfig, WaitForBootError,
-    };
+    use test_infra::*;
 
     use uuid::Uuid;
     use vmm_sys_util::tempdir::TempDir;
@@ -33,7 +31,14 @@ mod tests {
 
     #[derive(Debug)]
     enum Error {
+        SshCommand(SshCommandError),
         WaitForBoot(WaitForBootError),
+    }
+
+    impl From<SshCommandError> for Error {
+        fn from(e: SshCommandError) -> Self {
+            Self::SshCommand(e)
+        }
     }
 
     struct Guest<'a> {
@@ -159,6 +164,16 @@ mod tests {
             self.network
                 .wait_vm_boot(custom_timeout)
                 .map_err(Error::WaitForBoot)
+        }
+
+        #[allow(dead_code)]
+        fn ssh_command(&self, command: &str) -> Result<String, SshCommandError> {
+            ssh_command_ip(
+                command,
+                &self.network.guest_ip,
+                DEFAULT_SSH_RETRIES,
+                DEFAULT_SSH_TIMEOUT,
+            )
         }
     }
 
