@@ -31,6 +31,7 @@ mod tests {
 
     #[derive(Debug)]
     enum Error {
+        Parsing(std::num::ParseIntError),
         SshCommand(SshCommandError),
         WaitForBoot(WaitForBootError),
     }
@@ -166,7 +167,6 @@ mod tests {
                 .map_err(Error::WaitForBoot)
         }
 
-        #[allow(dead_code)]
         fn ssh_command(&self, command: &str) -> Result<String, SshCommandError> {
             ssh_command_ip(
                 command,
@@ -174,6 +174,13 @@ mod tests {
                 DEFAULT_SSH_RETRIES,
                 DEFAULT_SSH_TIMEOUT,
             )
+        }
+
+        fn get_cpu_count(&self) -> Result<u8, Error> {
+            self.ssh_command("grep -c processor /proc/cpuinfo")?
+                .trim()
+                .parse()
+                .map_err(Error::Parsing)
         }
     }
 
@@ -232,6 +239,62 @@ mod tests {
                 .starts_with(&format!("Domain {} created", guest.vm_name)));
 
             guest.wait_vm_boot(None).unwrap();
+        });
+
+        spawn_virsh(&["destroy", &guest.vm_name])
+            .unwrap()
+            .wait()
+            .unwrap();
+
+        libvirtd.kill().unwrap();
+        let libvirtd_output = libvirtd.wait_with_output().unwrap();
+
+        eprintln!(
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+        );
+
+        assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_multi_cpu() {
+        cleanup_libvirt_state();
+        let mut libvirtd = spawn_libvirtd().unwrap();
+        thread::sleep(std::time::Duration::new(5, 0));
+
+        let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
+        let guest = Guest::new(&mut disk);
+
+        let domain_path = guest.create_domain(4, DEFAULT_RAM_SIZE);
+
+        let r = std::panic::catch_unwind(|| {
+            spawn_virsh(&["create", domain_path.to_str().unwrap()])
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            guest.wait_vm_boot(None).unwrap();
+
+            assert_eq!(guest.get_cpu_count().unwrap_or_default(), 4);
+
+            #[cfg(target_arch = "x86_64")]
+            assert_eq!(
+                guest
+                    .ssh_command(r#"dmesg | grep "smpboot: Allowing" | sed "s/\[\ *[0-9.]*\] //""#)
+                    .unwrap()
+                    .trim(),
+                "smpboot: Allowing 4 CPUs, 0 hotplug CPUs"
+            );
+            #[cfg(target_arch = "aarch64")]
+            assert_eq!(
+                guest
+                    .ssh_command(r#"dmesg | grep "smp: Brought up" | sed "s/\[\ *[0-9.]*\] //""#)
+                    .unwrap()
+                    .trim(),
+                "smp: Brought up 1 node, 4 CPUs"
+            );
         });
 
         spawn_virsh(&["destroy", &guest.vm_name])
