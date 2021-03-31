@@ -397,7 +397,7 @@ mod tests {
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
         let guest = Guest::new(&mut disk);
 
-        let domain_path = guest.create_domain(VcpuConfig { boot: 4, max: 4 }, DEFAULT_RAM_SIZE);
+        let domain_path = guest.create_domain(VcpuConfig { boot: 2, max: 4 }, DEFAULT_RAM_SIZE);
 
         let r = std::panic::catch_unwind(|| {
             spawn_virsh(&["create", domain_path.to_str().unwrap()])
@@ -407,7 +407,8 @@ mod tests {
 
             guest.wait_vm_boot(None).unwrap();
 
-            assert_eq!(guest.get_cpu_count().unwrap_or_default(), 4);
+            // Check the number of vCPUs matches 'boot' parameter.
+            assert_eq!(guest.get_cpu_count().unwrap_or_default(), 2);
 
             #[cfg(target_arch = "x86_64")]
             assert_eq!(
@@ -415,7 +416,7 @@ mod tests {
                     .ssh_command(r#"dmesg | grep "smpboot: Allowing" | sed "s/\[\ *[0-9.]*\] //""#)
                     .unwrap()
                     .trim(),
-                "smpboot: Allowing 4 CPUs, 0 hotplug CPUs"
+                "smpboot: Allowing 4 CPUs, 2 hotplug CPUs"
             );
             #[cfg(target_arch = "aarch64")]
             assert_eq!(
@@ -423,8 +424,34 @@ mod tests {
                     .ssh_command(r#"dmesg | grep "smp: Brought up" | sed "s/\[\ *[0-9.]*\] //""#)
                     .unwrap()
                     .trim(),
-                "smp: Brought up 1 node, 4 CPUs"
+                "smp: Brought up 1 node, 2 CPUs"
             );
+
+            // Hotplug 2 vCPUs
+            spawn_virsh(&["setvcpus", &guest.vm_name, "4"])
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            // Online them from the guest
+            guest
+                .ssh_command("echo 1 | sudo tee /sys/bus/cpu/devices/cpu2/online")
+                .unwrap();
+            guest
+                .ssh_command("echo 1 | sudo tee /sys/bus/cpu/devices/cpu3/online")
+                .unwrap();
+
+            // Check the number of vCPUs has been increased.
+            assert_eq!(guest.get_cpu_count().unwrap_or_default(), 4);
+
+            // Unplug 3 vCPUs
+            spawn_virsh(&["setvcpus", &guest.vm_name, "1"])
+                .unwrap()
+                .wait()
+                .unwrap();
+
+            // Check the number of vCPUs has been reduced.
+            assert_eq!(guest.get_cpu_count().unwrap_or_default(), 1);
         });
 
         spawn_virsh(&["destroy", &guest.vm_name])
