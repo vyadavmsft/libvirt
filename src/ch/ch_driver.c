@@ -1899,6 +1899,12 @@ chDomainSetVcpusFlags(virDomainPtr dom,
     return ret;
 }
 
+static int
+chDomainSetVcpus(virDomainPtr dom, unsigned int nvcpus)
+{
+    return chDomainSetVcpusFlags(dom, nvcpus, VIR_DOMAIN_AFFECT_LIVE);
+}
+
 static int chDomainSetAutostart(virDomainPtr dom,
                                   int autostart)
 {
@@ -2045,7 +2051,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainSetVcpusFlags = chDomainSetVcpusFlags,           /* 6.7.0 */
     .domainGetAutostart = chDomainGetAutostart,             /* 6.7.0 */
     .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
-
+    .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
 };
 
 static virConnectDriver chConnectDriver = {
