@@ -24,7 +24,6 @@ mod tests {
     const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64.raw";
 
     pub const DEFAULT_TCP_LISTENER_PORT: u16 = 8000;
-    const DEFAULT_VCPUS: u8 = 1;
     const DEFAULT_RAM_SIZE: u64 = 1 << 30;
 
     lazy_static! {
@@ -44,6 +43,17 @@ mod tests {
         }
     }
 
+    struct VcpuConfig {
+        boot: u8,
+        max: u8,
+    }
+
+    impl Default for VcpuConfig {
+        fn default() -> Self {
+            VcpuConfig { boot: 1, max: 1 }
+        }
+    }
+
     struct Guest<'a> {
         tmp_dir: TempDir,
         vm_name: String,
@@ -56,7 +66,7 @@ mod tests {
     impl<'a> std::panic::RefUnwindSafe for Guest<'a> {}
 
     impl<'a> Guest<'a> {
-        fn create_domain(&self, vcpus: u8, memory_size: u64) -> PathBuf {
+        fn create_domain(&self, vcpus: VcpuConfig, memory_size: u64) -> PathBuf {
             let domain = format!(
                 "<domain type='ch'> \
         <name>{}</name> \
@@ -68,7 +78,7 @@ mod tests {
                 <type>hvm</type> \
                 <kernel>{}</kernel> \
         </os> \
-        <vcpu>{}</vcpu> \
+        <vcpu current='{}'>{}</vcpu> \
         <memory unit='b'>{}</memory> \
         <devices> \
                 <disk type='file'> \
@@ -96,7 +106,8 @@ mod tests {
                 self.vm_name,
                 self.vm_name,
                 self.kernel_path.to_str().unwrap(),
-                vcpus,
+                vcpus.boot,
+                vcpus.max,
                 memory_size,
                 self.disk_config
                     .disk(DiskType::OperatingSystem)
@@ -231,7 +242,7 @@ mod tests {
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
         let guest = Guest::new(&mut disk);
 
-        let domain_path = guest.create_domain(DEFAULT_VCPUS, DEFAULT_RAM_SIZE);
+        let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
         let r = std::panic::catch_unwind(|| {
             let output = spawn_virsh(&["create", domain_path.to_str().unwrap()])
@@ -289,7 +300,7 @@ mod tests {
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
         let guest = Guest::new(&mut disk);
-        let domain_path = guest.create_domain(DEFAULT_VCPUS, DEFAULT_RAM_SIZE);
+        let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
         let output = spawn_virsh(&["define", domain_path.to_str().unwrap()])
             .unwrap()
             .wait_with_output()
@@ -347,7 +358,7 @@ mod tests {
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
         let guest = Guest::new(&mut disk);
 
-        let domain_path = guest.create_domain(DEFAULT_VCPUS, 128 << 30);
+        let domain_path = guest.create_domain(VcpuConfig::default(), 128 << 30);
 
         let r = std::panic::catch_unwind(|| {
             spawn_virsh(&["create", domain_path.to_str().unwrap()])
@@ -386,7 +397,7 @@ mod tests {
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
         let guest = Guest::new(&mut disk);
 
-        let domain_path = guest.create_domain(4, DEFAULT_RAM_SIZE);
+        let domain_path = guest.create_domain(VcpuConfig { boot: 4, max: 4 }, DEFAULT_RAM_SIZE);
 
         let r = std::panic::catch_unwind(|| {
             spawn_virsh(&["create", domain_path.to_str().unwrap()])
