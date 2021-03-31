@@ -22,7 +22,7 @@ pipeline{
 				}
 			}
 			stage ('Worker build') {
-				agent { node { label 'groovy' } }
+				agent { node { label 'groovy-libvirt' } }
 				stages {
 					stage ('Checkout') {
 						steps {
