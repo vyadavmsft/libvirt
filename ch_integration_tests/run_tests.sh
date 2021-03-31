@@ -13,8 +13,8 @@ if [ ! -f "$FW" ]; then
     popd
 fi
 
-FOCAL_OS_IMAGE_NAME="focal-server-cloudimg-amd64-custom-20210106-1.qcow2"
-FOCAL_OS_IMAGE_URL="https://cloudhypervisorstorage.blob.core.windows.net/images/$FOCAL_OS_IMAGE_NAME"
+FOCAL_OS_IMAGE_NAME="focal-server-cloudimg-amd64.img"
+FOCAL_OS_IMAGE_URL="https://cloud-images.ubuntu.com/focal/current/$FOCAL_OS_IMAGE_NAME"
 FOCAL_OS_IMAGE="$WORKLOADS_DIR/$FOCAL_OS_IMAGE_NAME"
 if [ ! -f "$FOCAL_OS_IMAGE" ]; then
     pushd $WORKLOADS_DIR
@@ -22,7 +22,7 @@ if [ ! -f "$FOCAL_OS_IMAGE" ]; then
     popd
 fi
 
-FOCAL_OS_RAW_IMAGE_NAME="focal-server-cloudimg-amd64-custom-20210106-1.raw"
+FOCAL_OS_RAW_IMAGE_NAME="focal-server-cloudimg-amd64.raw"
 FOCAL_OS_RAW_IMAGE="$WORKLOADS_DIR/$FOCAL_OS_RAW_IMAGE_NAME"
 if [ ! -f "$FOCAL_OS_RAW_IMAGE" ]; then
     pushd $WORKLOADS_DIR

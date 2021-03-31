@@ -21,7 +21,7 @@ mod tests {
     use uuid::Uuid;
     use vmm_sys_util::tempdir::TempDir;
 
-    const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64-custom-20210106-1.raw";
+    const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64.raw";
 
     pub const DEFAULT_TCP_LISTENER_PORT: u16 = 8000;
     const DEFAULT_VCPUS: u8 = 1;
@@ -164,8 +164,10 @@ mod tests {
         }
 
         fn wait_vm_boot(&self, custom_timeout: Option<i32>) -> Result<(), Error> {
+            // Focal image requires more than default 80s to boot, that's why
+            // we set the default to 120s.
             self.network
-                .wait_vm_boot(custom_timeout)
+                .wait_vm_boot(custom_timeout.or(Some(120)))
                 .map_err(Error::WaitForBoot)
         }
 
