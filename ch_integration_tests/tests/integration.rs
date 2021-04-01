@@ -54,6 +54,28 @@ mod tests {
         }
     }
 
+    enum KernelType {
+        RustFw,
+    }
+
+    impl KernelType {
+        fn path(&self) -> PathBuf {
+            let mut kernel_path = dirs::home_dir().unwrap();
+            kernel_path.push("workloads");
+
+            match self {
+                KernelType::RustFw => {
+                    #[cfg(target_arch = "aarch64")]
+                    kernel_path.push("Image");
+                    #[cfg(target_arch = "x86_64")]
+                    kernel_path.push("hypervisor-fw");
+                }
+            }
+
+            kernel_path
+        }
+    }
+
     struct Guest<'a> {
         tmp_dir: TempDir,
         vm_name: String,
@@ -160,17 +182,16 @@ mod tests {
             domain_path
         }
 
-        fn new_from_ip_range(disk_config: &'a mut dyn DiskConfig, class: &str, id: u8) -> Self {
+        fn new_from_ip_range(
+            disk_config: &'a mut dyn DiskConfig,
+            class: &str,
+            id: u8,
+            kernel: KernelType,
+        ) -> Self {
             let tmp_dir = TempDir::new_with_prefix("/tmp/ch").unwrap();
 
-            let mut workload_path = dirs::home_dir().unwrap();
-            workload_path.push("workloads");
+            let kernel_path = kernel.path();
 
-            let mut kernel_path = workload_path;
-            #[cfg(target_arch = "aarch64")]
-            kernel_path.push("Image");
-            #[cfg(target_arch = "x86_64")]
-            kernel_path.push("hypervisor-fw");
             let network = GuestNetworkConfig {
                 guest_ip: format!("{}.{}.2", class, id),
                 l2_guest_ip1: format!("{}.{}.3", class, id),
@@ -197,12 +218,12 @@ mod tests {
             }
         }
 
-        fn new(disk_config: &'a mut dyn DiskConfig) -> Self {
+        fn new(disk_config: &'a mut dyn DiskConfig, kernel: KernelType) -> Self {
             let mut guard = NEXT_VM_ID.lock().unwrap();
             let id = *guard;
             *guard = id + 1;
 
-            Self::new_from_ip_range(disk_config, "192.168", id)
+            Self::new_from_ip_range(disk_config, "192.168", id, kernel)
         }
 
         fn wait_vm_boot(&self, custom_timeout: Option<i32>) -> Result<(), Error> {
@@ -271,7 +292,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
 
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
@@ -330,7 +351,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
         let output = spawn_virsh(&["define", domain_path.to_str().unwrap()])
             .unwrap()
@@ -387,7 +408,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
         spawn_virsh(&["create", domain_path.to_str().unwrap()])
@@ -427,7 +448,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
 
         let domain_path = guest.create_domain(VcpuConfig::default(), 128 << 30);
 
@@ -466,7 +487,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
 
         let domain_path = guest.create_domain(VcpuConfig { boot: 2, max: 4 }, DEFAULT_RAM_SIZE);
 
@@ -549,7 +570,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
 
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
@@ -626,7 +647,7 @@ mod tests {
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk);
+        let guest = Guest::new(&mut disk, KernelType::RustFw);
 
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
