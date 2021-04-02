@@ -705,6 +705,26 @@ static int virCHMonitorValidateEventsJSON(virCHMonitorPtr mon,
 }
 
 /*
+ * Caller should have locked the Domain
+ */
+static inline int virCHMonitorShutdownVm(virDomainObjPtr vm,
+        virDomainShutoffReason reason)
+{
+     virCHDriverPtr driver = CH_DOMAIN_PRIVATE(vm)->driver;
+     g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
+
+     if (virCHDomainObjBeginJob(vm, CH_JOB_MODIFY))
+         return -1;
+
+     virCHProcessStop(driver, vm, reason);
+     if (virDomainObjSave(vm, driver->xmlopt, cfg->stateDir))
+        VIR_WARN("Failed to persist the domain after shutdown!");
+     virCHDomainObjEndJob(vm);
+
+     return 0;
+}
+
+/*
  * Caller should have reference on Monitor and Domain
  */
 static int virCHMonitorProcessEvent(virCHMonitorPtr mon,
@@ -750,21 +770,15 @@ static int virCHMonitorProcessEvent(virCHMonitorPtr mon,
         case virCHMonitorVmmEventShutdown: // shutdown inside vmm
         case virCHMonitorVmEventShutdown:
             {
-                g_autoptr(virCHDriverConfig) cfg = virCHDriverGetConfig(driver);
                 virDomainState state;
 
                 virObjectLock(vm);
                 state = virDomainObjGetState(vm, NULL);
                 if ((ev == virCHMonitorVmmEventShutdown ||
-                     state == VIR_DOMAIN_SHUTDOWN) &&
-                      (virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) == 0)) {
-
-                    if (virDomainObjSave(vm, driver->xmlopt, cfg->stateDir))
-                        VIR_WARN("Failed to persist the domain after shutdown!");
-
-                    virCHProcessStop(driver, vm, VIR_DOMAIN_SHUTOFF_SHUTDOWN);
-
-                    virCHDomainObjEndJob(vm);
+                     state == VIR_DOMAIN_SHUTDOWN)) {
+                    if (virCHMonitorShutdownVm(vm, VIR_DOMAIN_SHUTOFF_SHUTDOWN))
+                        VIR_WARN("Failed to mark the VM(%s) as SHUTDOWN!",
+                                vm->def->name);
                 }
                 virObjectUnlock(vm);
                 break;
@@ -936,10 +950,16 @@ static int virCHMonitorReadProcessEvents(virCHMonitorPtr mon,
 
         ret = read(monitor_fd, buf + sz, max_sz - sz);
         if (ret == 0 || (ret < 0 && errno == EINTR)) {
-            if ((virPidFileReadPathIfAlive(priv->pidfile, &pid, priv->ch_path)) < 0 || (pid < 0)) {
-                virCHProcessStop(CH_DOMAIN_PRIVATE(vm)->driver, vm, VIR_DOMAIN_SHUTOFF_CRASHED);
-                return -1;
+            if (virPidFileReadPathIfAlive(priv->pidfile, &pid, priv->ch_path) < 0 ||
+                    (pid < 0)) {
+                virObjectLock(vm);
+                if (virCHMonitorShutdownVm(vm, VIR_DOMAIN_SHUTOFF_CRASHED))
+                    VIR_WARN("Failed to mark the VM(%s) as SHUTDOWN!",
+                             vm->def->name);
+                virObjectUnlock(vm);
+                return 0;
             }
+
             g_usleep(G_USEC_PER_SEC);
             continue;
         } else if (ret < 0) {
