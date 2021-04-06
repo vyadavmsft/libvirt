@@ -54,7 +54,9 @@ mod tests {
         }
     }
 
+    #[derive(PartialEq)]
     enum KernelType {
+        Direct,
         RustFw,
     }
 
@@ -70,6 +72,12 @@ mod tests {
                     #[cfg(target_arch = "x86_64")]
                     kernel_path.push("hypervisor-fw");
                 }
+                KernelType::Direct => {
+                    #[cfg(target_arch = "aarch64")]
+                    kernel_path.push("Image");
+                    #[cfg(target_arch = "x86_64")]
+                    kernel_path.push("vmlinux");
+                }
             }
 
             kernel_path
@@ -80,7 +88,7 @@ mod tests {
         tmp_dir: TempDir,
         vm_name: String,
         uuid: String,
-        kernel_path: PathBuf,
+        kernel: KernelType,
         network: GuestNetworkConfig,
         disk_config: &'a dyn DiskConfig,
     }
@@ -89,6 +97,13 @@ mod tests {
 
     impl<'a> Guest<'a> {
         fn create_domain(&self, vcpus: VcpuConfig, memory_size: u64) -> PathBuf {
+            let mut xml_os = XMLElement::new("os")
+                .element(XMLElement::new("type").text("hvm"))
+                .element(XMLElement::new("kernel").text(self.kernel.path().to_str().unwrap()));
+            if self.kernel == KernelType::Direct {
+                xml_os.add_element(XMLElement::new("cmdline").text("root=/dev/vda1 rw"));
+            }
+
             let xml_domain = XMLElement::new("domain")
                 .attr("type", "ch")
                 .element(XMLElement::new("name").text(self.vm_name.clone()))
@@ -99,13 +114,7 @@ mod tests {
                     XMLElement::new("description")
                         .text(format!("Test VM {}", self.vm_name.clone())),
                 )
-                .element(
-                    XMLElement::new("os")
-                        .element(XMLElement::new("type").text("hvm"))
-                        .element(
-                            XMLElement::new("kernel").text(self.kernel_path.to_str().unwrap()),
-                        ),
-                )
+                .element(xml_os)
                 .element(
                     XMLElement::new("vcpu")
                         .attr("current", vcpus.boot)
@@ -190,8 +199,6 @@ mod tests {
         ) -> Self {
             let tmp_dir = TempDir::new_with_prefix("/tmp/ch").unwrap();
 
-            let kernel_path = kernel.path();
-
             let network = GuestNetworkConfig {
                 guest_ip: format!("{}.{}.2", class, id),
                 l2_guest_ip1: format!("{}.{}.3", class, id),
@@ -211,7 +218,7 @@ mod tests {
             Guest {
                 tmp_dir,
                 disk_config,
-                kernel_path,
+                kernel,
                 network,
                 vm_name,
                 uuid: Uuid::new_v4().to_hyphenated().to_string(),
@@ -285,14 +292,13 @@ mod tests {
         let _ = std::fs::remove_dir_all("/var/run/libvirt");
     }
 
-    #[test]
-    fn test_create_vm() {
+    fn test_create_vm(kernel: KernelType) {
         cleanup_libvirt_state();
         let mut libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
-        let guest = Guest::new(&mut disk, KernelType::RustFw);
+        let guest = Guest::new(&mut disk, kernel);
 
         let domain_path = guest.create_domain(VcpuConfig::default(), DEFAULT_RAM_SIZE);
 
@@ -399,6 +405,11 @@ mod tests {
             .unwrap()
             .trim()
             .starts_with(&format!("Domain {} has been undefined", guest.vm_name)));
+    }
+
+    #[test]
+    fn test_direct_kernel_boot() {
+        test_create_vm(KernelType::Direct)
     }
 
     #[test]
@@ -561,6 +572,11 @@ mod tests {
         );
 
         assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_rust_fw_boot() {
+        test_create_vm(KernelType::RustFw)
     }
 
     #[test]
