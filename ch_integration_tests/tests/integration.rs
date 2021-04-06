@@ -10,14 +10,14 @@ extern crate regex;
 
 #[cfg(test)]
 mod tests {
+    use regex::Regex;
+    use simple_xml_serialize::XMLElement;
     use std::io::{self, Write};
     use std::process::{Child, Command, Stdio};
     use std::sync::Mutex;
     use std::thread;
     use std::{ffi::OsStr, path::PathBuf};
     use test_infra::*;
-
-    use regex::Regex;
     use uuid::Uuid;
     use vmm_sys_util::tempdir::TempDir;
 
@@ -67,56 +67,87 @@ mod tests {
 
     impl<'a> Guest<'a> {
         fn create_domain(&self, vcpus: VcpuConfig, memory_size: u64) -> PathBuf {
-            let domain = format!(
-                "<domain type='ch'> \
-        <name>{}</name> \
-        <uuid>{}</uuid> \
-        <genid>43dc0cf8-809b-4adb-9bea-a9abb5f3d90e</genid> \
-        <title>Test VM {}</title> \
-        <description>Test VM {}</description> \
-        <os> \
-                <type>hvm</type> \
-                <kernel>{}</kernel> \
-        </os> \
-        <vcpu current='{}'>{}</vcpu> \
-        <memory unit='b'>{}</memory> \
-        <devices> \
-                <disk type='file'> \
-                        <source file='{}'/> \
-                        <target dev='vda' bus='virtio'/> \
-                </disk> \
-                <disk type='file'> \
-                        <source file='{}'/> \
-                        <target dev='vdb' bus='virtio'/> \
-                </disk> \
-                <console type='pty'> \
-                        <target type='virtio' port='0'/> \
-                </console> \
-                <interface type='ethernet'> \
-                        <mac address='{}'/> \
-                        <model type='virtio'/> \
-                        <source> \
-                               <ip address='{}' prefix='24'/> \
-                        </source> \
-              </interface> \
-        </devices> \
-        </domain>",
-                self.vm_name,
-                self.uuid,
-                self.vm_name,
-                self.vm_name,
-                self.kernel_path.to_str().unwrap(),
-                vcpus.boot,
-                vcpus.max,
-                memory_size,
-                self.disk_config
-                    .disk(DiskType::OperatingSystem)
-                    .unwrap()
-                    .as_str(),
-                self.disk_config.disk(DiskType::CloudInit).unwrap().as_str(),
-                self.network.guest_mac,
-                self.network.host_ip,
-            );
+            let xml_domain = XMLElement::new("domain")
+                .attr("type", "ch")
+                .element(XMLElement::new("name").text(self.vm_name.clone()))
+                .element(XMLElement::new("uuid").text(self.uuid.clone()))
+                .element(XMLElement::new("genid").text("43dc0cf8-809b-4adb-9bea-a9abb5f3d90e"))
+                .element(XMLElement::new("title").text(format!("Test VM {}", self.vm_name.clone())))
+                .element(
+                    XMLElement::new("description")
+                        .text(format!("Test VM {}", self.vm_name.clone())),
+                )
+                .element(
+                    XMLElement::new("os")
+                        .element(XMLElement::new("type").text("hvm"))
+                        .element(
+                            XMLElement::new("kernel").text(self.kernel_path.to_str().unwrap()),
+                        ),
+                )
+                .element(
+                    XMLElement::new("vcpu")
+                        .attr("current", vcpus.boot)
+                        .text(vcpus.max),
+                )
+                .element(
+                    XMLElement::new("memory")
+                        .attr("unit", "b")
+                        .text(memory_size),
+                )
+                .element(
+                    XMLElement::new("devices")
+                        .element(
+                            XMLElement::new("disk")
+                                .attr("type", "file")
+                                .element(XMLElement::new("source").attr(
+                                    "file",
+                                    self.disk_config.disk(DiskType::OperatingSystem).unwrap(),
+                                ))
+                                .element(
+                                    XMLElement::new("target")
+                                        .attr("dev", "vda")
+                                        .attr("bus", "virtio"),
+                                ),
+                        )
+                        .element(
+                            XMLElement::new("disk")
+                                .attr("type", "file")
+                                .element(XMLElement::new("source").attr(
+                                    "file",
+                                    self.disk_config.disk(DiskType::CloudInit).unwrap(),
+                                ))
+                                .element(
+                                    XMLElement::new("target")
+                                        .attr("dev", "vdb")
+                                        .attr("bus", "virtio"),
+                                ),
+                        )
+                        .element(
+                            XMLElement::new("console").attr("type", "pty").element(
+                                XMLElement::new("target")
+                                    .attr("type", "virtio")
+                                    .attr("port", "0"),
+                            ),
+                        )
+                        .element(
+                            XMLElement::new("interface")
+                                .attr("type", "ethernet")
+                                .element(
+                                    XMLElement::new("mac")
+                                        .attr("address", self.network.guest_mac.clone()),
+                                )
+                                .element(XMLElement::new("model").attr("type", "virtio"))
+                                .element(
+                                    XMLElement::new("source").element(
+                                        XMLElement::new("ip")
+                                            .attr("address", self.network.host_ip.clone())
+                                            .attr("prefix", "24"),
+                                    ),
+                                ),
+                        ),
+                );
+
+            let domain = xml_domain.to_string();
 
             eprintln!("{}\n", domain);
 
