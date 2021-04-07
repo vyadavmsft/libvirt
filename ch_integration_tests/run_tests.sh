@@ -13,6 +13,13 @@ if [ ! -f "$FW" ]; then
     popd
 fi
 
+OVMF_FW="$WORKLOADS_DIR/OVMF-4b47d0c6c8.fd"
+# Check OVMF firmware is present
+if [[ ! -f ${OVMF_FW} ]]; then
+    echo "OVMF firmware not present on the host"
+    exit 1
+fi
+
 FOCAL_OS_IMAGE_NAME="focal-server-cloudimg-amd64-custom-20210407-0.qcow2"
 FOCAL_OS_IMAGE_URL="https://cloudhypervisorstorage.blob.core.windows.net/images/$FOCAL_OS_IMAGE_NAME"
 FOCAL_OS_IMAGE="$WORKLOADS_DIR/$FOCAL_OS_IMAGE_NAME"

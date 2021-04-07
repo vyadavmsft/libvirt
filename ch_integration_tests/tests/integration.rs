@@ -57,26 +57,30 @@ mod tests {
     #[derive(PartialEq)]
     enum KernelType {
         Direct,
+        OvmfFw,
         RustFw,
     }
 
     impl KernelType {
         fn path(&self) -> PathBuf {
+            #[cfg(target_arch = "aarch64")]
+            assert!(self == KernelType::Direct);
+
             let mut kernel_path = dirs::home_dir().unwrap();
             kernel_path.push("workloads");
 
             match self {
-                KernelType::RustFw => {
-                    #[cfg(target_arch = "aarch64")]
-                    kernel_path.push("Image");
-                    #[cfg(target_arch = "x86_64")]
-                    kernel_path.push("hypervisor-fw");
-                }
                 KernelType::Direct => {
                     #[cfg(target_arch = "aarch64")]
                     kernel_path.push("Image");
                     #[cfg(target_arch = "x86_64")]
                     kernel_path.push("vmlinux");
+                }
+                KernelType::OvmfFw => {
+                    kernel_path.push("OVMF-4b47d0c6c8.fd");
+                }
+                KernelType::RustFw => {
+                    kernel_path.push("hypervisor-fw");
                 }
             }
 
@@ -572,6 +576,11 @@ mod tests {
         );
 
         assert!(r.is_ok());
+    }
+
+    #[test]
+    fn test_ovmf_fw_boot() {
+        test_create_vm(KernelType::OvmfFw)
     }
 
     #[test]
