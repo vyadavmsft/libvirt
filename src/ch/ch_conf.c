@@ -195,7 +195,7 @@ chExtractVersionInfo(int *retversion)
     if ((tmp = STRSKIP(tmp, "cloud-hypervisor v")) == NULL)
         goto cleanup;
 
-    if (virParseVersionString(tmp, &version, false) < 0)
+    if (virParseVersionString(tmp, &version, true) < 0)
         goto cleanup;
 
     // v0.9.0 is the minimum supported version
