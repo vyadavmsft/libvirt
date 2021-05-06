@@ -12,6 +12,7 @@ extern crate regex;
 mod tests {
     use regex::Regex;
     use simple_xml_serialize::XMLElement;
+    use std::convert::TryFrom;
     use std::io::{self, Write};
     use std::process::{Child, Command, Stdio};
     use std::sync::Mutex;
@@ -20,6 +21,7 @@ mod tests {
     use test_infra::*;
     use uuid::Uuid;
     use vmm_sys_util::tempdir::TempDir;
+    use whoami;
 
     const FOCAL_IMAGE_NAME: &str = "focal-server-cloudimg-amd64.raw";
 
@@ -109,7 +111,7 @@ mod tests {
             }
 
             let xml_domain = XMLElement::new("domain")
-                .attr("type", "ch")
+                .attr("type", "kvm")
                 .element(XMLElement::new("name").text(self.vm_name.clone()))
                 .element(XMLElement::new("uuid").text(self.uuid.clone()))
                 .element(XMLElement::new("genid").text("43dc0cf8-809b-4adb-9bea-a9abb5f3d90e"))
@@ -282,7 +284,7 @@ mod tests {
         S: AsRef<OsStr>,
     {
         Command::new("virsh")
-            .args(&["-c", "ch:///system"])
+            .args(&["-c", "ch:///session"])
             .args(args)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -290,15 +292,33 @@ mod tests {
     }
 
     fn cleanup_libvirt_state() {
-        let _ = std::fs::remove_dir_all("/etc/libvirt/ch");
-        let _ = std::fs::remove_dir_all("/var/lib/libvirt");
-        let _ = std::fs::remove_file("/var/run/libvirtd.pid");
-        let _ = std::fs::remove_dir_all("/var/run/libvirt");
+        let uid = unsafe { libc::getuid() };
+        let uname = whoami::username();
+        let _ = std::fs::remove_dir_all(format!("/run/user/{}/libvirt", uid));
+        let _ = std::fs::remove_dir_all(format!("/home/{}/.cache/libvirt", uname));
+    }
+
+    fn get_libvirtd_log(vm_name: &str) -> Option<String> {
+        let uid = unsafe { libc::getuid() };
+        let uname = whoami::username();
+        let log_path_run =
+            PathBuf::from(format!("/run/user/{}/libvirt/ch/log/{}.log", uid, vm_name));
+        let log_path_home = PathBuf::from(format!(
+            "/home/{}/.cache/libvirt/ch/log/{}.log",
+            uname, vm_name
+        ));
+        if log_path_run.exists() {
+            std::fs::read_to_string(log_path_run).ok()
+        } else if log_path_home.exists() {
+            std::fs::read_to_string(log_path_home).ok()
+        } else {
+            None
+        }
     }
 
     fn test_create_vm(kernel: KernelType) {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -321,7 +341,7 @@ mod tests {
             assert!(std::str::from_utf8(&output.stdout)
                 .unwrap()
                 .trim()
-                .starts_with(&format!("Domain {} created", guest.vm_name)));
+                .starts_with(&format!("Domain '{}' created", guest.vm_name)));
 
             guest.wait_vm_boot(None).unwrap();
         });
@@ -337,19 +357,20 @@ mod tests {
             std::str::from_utf8(&destroy_output.stderr).unwrap()
         );
 
-        assert!(std::str::from_utf8(&destroy_output.stdout)
-            .unwrap()
-            .trim()
-            .starts_with(&format!("Domain {} destroyed", guest.vm_name)));
-
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
+
+        assert!(std::str::from_utf8(&destroy_output.stdout)
+            .unwrap()
+            .trim()
+            .starts_with(&format!("Domain '{}' destroyed", guest.vm_name)));
 
         assert!(r.is_ok());
     }
@@ -357,7 +378,7 @@ mod tests {
     #[test]
     fn test_defines() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -368,15 +389,10 @@ mod tests {
             .wait_with_output()
             .unwrap();
 
-        libvirtd.kill().unwrap();
-        // libvirtd got SIGKILL, cleanup /var/run manually
-        // to avoid getting non-persistent state leftovers
-        let _ = std::fs::remove_dir_all("/var/lib/libvirt");
-        let _ = std::fs::remove_file("/var/run/libvirtd.pid");
-        let _ = std::fs::remove_dir_all("/var/run/libvirt");
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
 
         // verify persistent state exists
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
         let list_output = spawn_virsh(&["list", "--all"])
             .unwrap()
@@ -388,19 +404,20 @@ mod tests {
             .wait_with_output()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(std::str::from_utf8(&output.stdout)
             .unwrap()
             .trim()
-            .starts_with(&format!("Domain {} defined", guest.vm_name)));
+            .starts_with(&format!("Domain '{}' defined", guest.vm_name)));
 
         let re = Regex::new(&format!(r"\s+-\s+{}\s+shut off", guest.vm_name)).unwrap();
         assert!(re.is_match(std::str::from_utf8(&list_output.stdout).unwrap().trim()));
@@ -408,7 +425,7 @@ mod tests {
         assert!(std::str::from_utf8(&undefine_output.stdout)
             .unwrap()
             .trim()
-            .starts_with(&format!("Domain {} has been undefined", guest.vm_name)));
+            .starts_with(&format!("Domain '{}' has been undefined", guest.vm_name)));
     }
 
     #[test]
@@ -419,7 +436,7 @@ mod tests {
     #[test]
     fn test_libvirt_restart() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -432,8 +449,8 @@ mod tests {
             .unwrap();
 
         guest.wait_vm_boot(None).unwrap();
-        libvirtd.kill().unwrap();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let destroy_output = spawn_virsh(&["destroy", &guest.vm_name])
@@ -441,25 +458,26 @@ mod tests {
             .wait_with_output()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(std::str::from_utf8(&destroy_output.stdout)
             .unwrap()
             .trim()
-            .starts_with(&format!("Domain {} destroyed", guest.vm_name)));
+            .starts_with(&format!("Domain '{}' destroyed", guest.vm_name)));
     }
 
     #[test]
     fn test_huge_memory() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -483,13 +501,14 @@ mod tests {
             .wait()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(r.is_ok());
@@ -498,7 +517,7 @@ mod tests {
     #[test]
     fn test_multi_cpu() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -566,13 +585,14 @@ mod tests {
             .wait()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(r.is_ok());
@@ -591,7 +611,7 @@ mod tests {
     #[test]
     fn test_track_vm_killed_state() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -607,10 +627,29 @@ mod tests {
 
             guest.wait_vm_boot(None).unwrap();
 
-            let pid = std::fs::read_to_string(format!("/var/run/libvirt/ch/{}.pid", guest.vm_name))
-                .unwrap()
-                .parse::<libc::pid_t>()
-                .unwrap();
+            let uid = unsafe { libc::getuid() };
+            let uname = whoami::username();
+            let pid_path_run = PathBuf::from(format!(
+                "/run/user/{}/libvirt/ch/run/{}.pid",
+                uid, guest.vm_name
+            ));
+            let pid_path_home = PathBuf::from(format!(
+                "/home/{}/.cache/libvirt/ch/run/{}.pid",
+                uname, guest.vm_name
+            ));
+            let pid = if pid_path_run.exists() {
+                std::fs::read_to_string(pid_path_run)
+                    .unwrap()
+                    .parse::<libc::pid_t>()
+                    .unwrap()
+            } else if pid_path_home.exists() {
+                std::fs::read_to_string(pid_path_home)
+                    .unwrap()
+                    .parse::<libc::pid_t>()
+                    .unwrap()
+            } else {
+                panic!("Missing pidfile");
+            };
             unsafe {
                 libc::kill(pid, libc::SIGKILL);
             }
@@ -630,13 +669,14 @@ mod tests {
             .wait()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(r.is_ok());
@@ -645,12 +685,12 @@ mod tests {
     #[test]
     fn test_uri() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let output = spawn_virsh(&["uri"]).unwrap().wait_with_output().unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
@@ -661,14 +701,14 @@ mod tests {
 
         assert_eq!(
             std::str::from_utf8(&output.stdout).unwrap().trim(),
-            "ch:///system"
+            "ch:///session"
         );
     }
 
     #[test]
     fn test_vm_restart() {
         cleanup_libvirt_state();
-        let mut libvirtd = spawn_libvirtd().unwrap();
+        let libvirtd = spawn_libvirtd().unwrap();
         thread::sleep(std::time::Duration::new(5, 0));
 
         let mut disk = UbuntuDiskConfig::new(FOCAL_IMAGE_NAME.to_owned());
@@ -707,13 +747,14 @@ mod tests {
             .wait()
             .unwrap();
 
-        libvirtd.kill().unwrap();
+        unsafe { libc::kill(i32::try_from(libvirtd.id()).unwrap(), libc::SIGTERM) };
         let libvirtd_output = libvirtd.wait_with_output().unwrap();
 
         eprintln!(
-            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}",
+            "libvirtd stdout\n\n{}\n\nlibvirtd stderr\n\n{}\n\nlibvirtd log\n\n{}",
             std::str::from_utf8(&libvirtd_output.stdout).unwrap(),
-            std::str::from_utf8(&libvirtd_output.stderr).unwrap()
+            std::str::from_utf8(&libvirtd_output.stderr).unwrap(),
+            get_libvirtd_log(&guest.vm_name).unwrap_or(String::from(""))
         );
 
         assert!(r.is_ok());
