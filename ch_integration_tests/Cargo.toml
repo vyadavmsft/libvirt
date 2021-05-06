@@ -17,3 +17,4 @@ test_infra = { git = "https://github.com/cloud-hypervisor/cloud-hypervisor" }
 uuid = { version = "0.8", features = ["v4"] }
 vmm-sys-util = "0.8.0"
 wait-timeout = "0.2.0"
+whoami = "1.1.2"
