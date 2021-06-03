@@ -56,6 +56,21 @@ if [ -d "$LINUX_CUSTOM_DIR" ]; then
     rm -rf $LINUX_CUSTOM_DIR
 fi
 
+cargo_test() {
+    bwrap --die-with-parent --ro-bind /usr /usr --ro-bind /etc /etc --ro-bind /var /var --bind /home /home --symlink usr/bin /bin --symlink usr/lib64 /lib64 --symlink usr/lib /lib --symlink usr/sbin /sbin --proc /proc --dev /dev --tmpfs /run --bind /tmp /tmp --bind /sys /sys cargo test -- --test $1
+}
+
 pushd ch_integration_tests
-cargo test -- --test-threads=1
+cargo test --no-run
+cargo_test test_defines &
+cargo_test test_direct_kernel_boot &
+cargo_test test_libvirt_restart &
+cargo_test test_huge_memory &
+cargo_test test_multi_cpu &
+cargo_test test_ovmf_fw_boot &
+cargo_test test_rust_fw_boot &
+cargo_test test_track_vm_killed_state &
+cargo_test test_uri &
+cargo_test test_vm_restart &
+wait
 popd
