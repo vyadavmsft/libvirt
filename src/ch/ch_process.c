@@ -28,6 +28,7 @@
 #include "ch_process.h"
 #include "viralloc.h"
 #include "virerror.h"
+#include "virjson.h"
 #include "virlog.h"
 
 #define VIR_FROM_THIS VIR_FROM_CH
@@ -50,6 +51,69 @@ virCHProcessConnectMonitor(virCHDriver *driver,
 
     virObjectUnref(cfg);
     return monitor;
+}
+
+static void
+virCHProcessUpdateConsoleDevice(virDomainObj *vm,
+                                virJSONValue *config,
+                                const char *device)
+{
+    const char *path;
+    virDomainChrDef *chr = NULL;
+    virJSONValue *dev, *file;
+
+    if (!config)
+        return;
+
+    dev = virJSONValueObjectGet(config, device);
+    if (!dev)
+        return;
+
+    file = virJSONValueObjectGet(dev, "file");
+    if (!file)
+        return;
+
+    path = virJSONValueGetString(file);
+    if (!path)
+        return;
+
+    if (STREQ(device, "console")) {
+        chr = vm->def->consoles[0];
+    } else if (STREQ(device, "serial")) {
+        chr = vm->def->serials[0];
+    }
+
+    if (chr && chr->source)
+        chr->source->data.file.path = g_strdup(path);
+}
+
+static void
+virCHProcessUpdateConsole(virDomainObj *vm,
+                          virJSONValue *info)
+{
+    virJSONValue *config;
+
+    config = virJSONValueObjectGet(info, "config");
+    if (!config)
+        return;
+
+    virCHProcessUpdateConsoleDevice(vm, config, "console");
+    virCHProcessUpdateConsoleDevice(vm, config, "serial");
+}
+
+static int
+virCHProcessUpdateInfo(virDomainObj *vm)
+{
+    virJSONValue *info;
+    virCHDomainObjPrivate *priv = vm->privateData;
+    if (virCHMonitorGetInfo(priv->monitor, &info) < 0)
+        return -1;
+
+    virCHProcessUpdateConsole(vm, info);
+
+    virJSONValueFree(info);
+
+    return 0;
 }
 
 /**
