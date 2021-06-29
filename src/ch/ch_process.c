@@ -156,6 +156,9 @@ int virCHProcessStart(virCHDriver *driver,
 
     vm->pid = priv->monitor->pid;
     vm->def->id = vm->pid;
+
+    virCHProcessUpdateInfo(vm);
+
     virDomainObjSetState(vm, VIR_DOMAIN_RUNNING, reason);
 
     return 0;
