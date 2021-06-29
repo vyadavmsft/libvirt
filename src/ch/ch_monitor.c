@@ -90,6 +90,59 @@ virCHMonitorBuildCPUJson(virJSONValue *content, virDomainDef *vmdef)
 }
 
 static int
+virCHMonitorBuildPTYJson(virJSONValue *content, virDomainDef *vmdef)
+{
+    virJSONValue *ptys = virJSONValueNewObject();
+
+    if ((vmdef->nconsoles &&
+         vmdef->consoles[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY)
+        && (vmdef->nserials &&
+            vmdef->serials[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY)) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Only a single console or serial can be configured for this domain"));
+        return -1;
+    } else if (vmdef->nconsoles > 1) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Only a single console can be configured for this domain"));
+        return -1;
+    } else if (vmdef->nserials > 1) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("Only a single serial can be configured for this domain"));
+        return -1;
+    }
+
+    if (vmdef->nconsoles) {
+        g_autoptr(virJSONValue) pty = virJSONValueNewObject();
+        if (vmdef->consoles[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY) {
+            if (virJSONValueObjectAppendString(pty, "mode", "Pty") < 0)
+                return -1;
+            if (virJSONValueObjectAppend(content, "console", &pty) < 0)
+                return -1;
+        } else {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("Console can only be enabled for a PTY"));
+            return -1;
+        }
+    }
+
+    if (vmdef->nserials) {
+        g_autoptr(virJSONValue) pty = virJSONValueNewObject();
+        if (vmdef->serials[0]->source->type == VIR_DOMAIN_CHR_TYPE_PTY) {
+            if (virJSONValueObjectAppendString(ptys, "mode", "Pty") < 0)
+                return -1;
+            if (virJSONValueObjectAppend(content, "serial", &pty) < 0)
+                return -1;
+        } else {
+            virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                           _("Serial can only be enabled for a PTY"));
+            return -1;
+        }
+    }
+
+    return 0;
+}
+
+static int
 virCHMonitorBuildKernelRelatedJson(virJSONValue *content, virDomainDef *vmdef)
 {
     virJSONValue *kernel = virJSONValueNewObject();
@@ -369,6 +422,9 @@ virCHMonitorBuildVMJson(virDomainDef *vmdef, char **jsonstr)
                        _("VM is not defined"));
         goto cleanup;
     }
+
+    if (virCHMonitorBuildPTYJson(content, vmdef) < 0)
+        goto cleanup;
 
     if (virCHMonitorBuildCPUJson(content, vmdef) < 0)
         goto cleanup;
