@@ -54,7 +54,6 @@ VIR_ONCE_GLOBAL_INIT(virCHMonitor);
 
 int virCHMonitorShutdownVMM(virCHMonitor *mon);
 int virCHMonitorPutNoContent(virCHMonitor *mon, const char *endpoint);
-int virCHMonitorGet(virCHMonitor *mon, const char *endpoint);
 
 static int
 virCHMonitorBuildCPUJson(virJSONValue *content, virDomainDef *vmdef)
@@ -613,7 +612,7 @@ virCHMonitorPutNoContent(virCHMonitor *mon, const char *endpoint)
     return ret;
 }
 
-int
+static int
 virCHMonitorGet(virCHMonitor *mon, const char *endpoint)
 {
     g_autofree char *url = NULL;
