@@ -20,8 +20,8 @@ if [[ ! -f ${OVMF_FW} ]]; then
     exit 1
 fi
 
-FOCAL_OS_IMAGE_NAME="focal-server-cloudimg-amd64-custom-20210407-0.qcow2"
-FOCAL_OS_IMAGE_URL="https://cloudhypervisorstorage.blob.core.windows.net/images/$FOCAL_OS_IMAGE_NAME"
+FOCAL_OS_IMAGE_NAME="focal-server-cloudimg-amd64-custom-20210609-0.qcow2"
+FOCAL_OS_IMAGE_URL="https://cloud-hypervisor.azureedge.net/$FOCAL_OS_IMAGE_NAME"
 FOCAL_OS_IMAGE="$WORKLOADS_DIR/$FOCAL_OS_IMAGE_NAME"
 if [ ! -f "$FOCAL_OS_IMAGE" ]; then
     pushd $WORKLOADS_DIR
