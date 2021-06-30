@@ -31,6 +31,7 @@ pipeline{
 					}
 					stage ('Download assets') {
 						steps {
+							sh "sudo apt install -y azure-cli"
 							sh "mkdir -p ${env.HOME}/workloads"
 							azureDownload(storageCredentialId: 'ch-image-store',
 										  containerName: 'private-images',
