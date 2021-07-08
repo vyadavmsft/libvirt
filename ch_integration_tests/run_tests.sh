@@ -43,7 +43,7 @@ LINUX_CUSTOM_DIR="$WORKLOADS_DIR/linux-custom"
 if [ ! -f "$VMLINUX_IMAGE" ]; then
     SRCDIR=$PWD
     pushd $WORKLOADS_DIR
-    time git clone --depth 1 "https://github.com/cloud-hypervisor/linux.git" -b "ch-5.10.6" $LINUX_CUSTOM_DIR
+    time git clone --depth 1 "https://github.com/cloud-hypervisor/linux.git" -b "ch-5.13-rc5" $LINUX_CUSTOM_DIR
     cp $SRCDIR/ch_integration_tests/resources/linux-config-x86_64 $LINUX_CUSTOM_DIR/.config
     pushd $LINUX_CUSTOM_DIR
     time make -j `nproc`
