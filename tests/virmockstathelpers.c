@@ -104,6 +104,7 @@ static int (*real___xstat)(int ver, const char *path, struct stat *sb);
 #endif
 #ifdef MOCK___XSTAT64
 static int (*real___xstat64)(int ver, const char *path, struct stat64 *sb);
+int __xstat64(int ver, const char * path, struct stat64 * stat_buf);
 #endif
 #ifdef MOCK_LSTAT
 static int (*real_lstat)(const char *path, struct stat *sb);
@@ -116,6 +117,7 @@ static int (*real___lxstat)(int ver, const char *path, struct stat *sb);
 #endif
 #ifdef MOCK___LXSTAT64
 static int (*real___lxstat64)(int ver, const char *path, struct stat64 *sb);
+int __lxstat64(int ver, const char * path, struct stat64 * stat_buf);
 #endif
 
 static bool init;
