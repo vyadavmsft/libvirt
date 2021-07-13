@@ -41,12 +41,19 @@ pipeline{
 					}
 					stage ('Install dependencies') {
 						steps {
-							sh "sudo apt update && sudo apt install -y meson ninja-build gcc libxml2-utils xsltproc python3-docutils libglib2.0-dev libgnutls28-dev libxml2-dev libnl-3-dev libnl-route-3-dev libyajl-dev make libcurl4-gnutls-dev qemu-utils libssl-dev mtools libudev-dev libpciaccess-dev flex bison libelf-dev"
+							sh "sudo apt update && sudo apt install -y meson ninja-build gcc libxml2-utils xsltproc python3-docutils libglib2.0-dev libgnutls28-dev libxml2-dev libnl-3-dev libnl-route-3-dev libyajl-dev make libcurl4-gnutls-dev qemu-utils libssl-dev mtools libudev-dev libpciaccess-dev flex bison libelf-dev bridge-utils procps"
 						}
 					}
 					stage ('Configure') {
 						steps {
 							sh "meson build -D driver_ch=enabled -D driver_qemu=disabled -D driver_openvz=disabled -D driver_esx=disabled -D driver_vmware=disabled -D driver_lxc=disabled -D driver_libxl=disabled -D driver_vbox=disabled -D selinux=disabled -D system=true --prefix=/usr"
+						}
+					}
+					stage ('Bridge Install') {
+						steps {
+							sh "sudo brctl addbr mybr0"
+							sh "sudo ip link set mybr0 up"
+							sh "sudo sysctl -w net.ipv4.ip_forward=1"
 						}
 					}
 					stage ('Build & Install') {
