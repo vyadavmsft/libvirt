@@ -18,3 +18,51 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#pragma once
+
+#include "ch_conf.h"
+
+#define CH_MIGRATION_FLAGS \
+    (VIR_MIGRATE_LIVE | \
+     VIR_MIGRATE_PERSIST_DEST | \
+     VIR_MIGRATE_UNDEFINE_SOURCE | \
+     VIR_MIGRATE_PAUSED)
+
+#define CH_MIGRATION_PARAMETERS NULL
+
+char *
+chDomainMigrationSrcBegin(virConnectPtr conn,
+                          virDomainObjPtr vm,
+                          const char *xmlin,
+                          char **cookieout,
+                          int *cookieoutlen);
+
+int
+chDomainMigrationDstPrepare(virConnectPtr dconn,
+                            virDomainDefPtr *def,
+                            const char *uri_in,
+                            char **uri_out,
+                            const char *cookiein,
+                            int cookieinlen,
+                            unsigned int flags);
+
+int
+chDomainMigrationSrcPerform(virCHDriverPtr driver,
+                            virDomainObjPtr vm,
+                            const char *dom_xml,
+                            const char *dconnuri,
+                            const char *uri_str,
+                            const char *dname,
+                            unsigned int flags);
+
+virDomainPtr
+chDomainMigrationDstFinish(virConnectPtr dconn,
+                           virDomainObjPtr vm,
+                           unsigned int flags,
+                           int cancelled);
+
+int
+chDomainMigrationSrcConfirm(virCHDriverPtr driver,
+                            virDomainObjPtr vm,
+                            unsigned int flags,
+                            int cancelled);
