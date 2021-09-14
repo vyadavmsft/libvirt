@@ -20,10 +20,12 @@
 
 #include <config.h>
 
+#include "ch_conf.h"
+#include "ch_domain.h"
+#include "datatypes.h"
 #include "virlog.h"
 #include "virerror.h"
 #include "viralloc.h"
-
 #include "ch_migration.h"
 
 #define VIR_FROM_THIS VIR_FROM_CH
@@ -99,4 +101,67 @@ chMigrationEatCookie(const char *cookiein, int cookieinlen,
     *migout = mig;
 
     return 0;
+}
+
+static bool
+chDomainMigrationIsAllowed(virDomainDefPtr def)
+{
+    if (def->nhostdevs > 0) {
+        virReportError(VIR_ERR_OPERATION_INVALID, "%s",
+                _("domain has assigned host devices"));
+        return false;
+    }
+
+    return true;
+}
+
+char *
+chDomainMigrationSrcBegin(virConnectPtr conn,
+                          virDomainObjPtr vm,
+                          const char *xmlin,
+                          char **cookieout,
+                          int *cookieoutlen)
+{
+    virCHDriverPtr driver = conn->privateData;
+    char *xml = NULL;
+    chMigrationCookiePtr mig = NULL;
+    virDomainDefPtr tmpdef = NULL, def;
+
+    if (virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) < 0)
+        goto cleanup;
+
+    if (!(mig = chMigrationCookieNew(vm)))
+        goto endjob;
+
+    if (chMigrationBakeCookie(mig, cookieout, cookieoutlen) < 0)
+        goto endjob;
+
+    if (xmlin) {
+        if (!(tmpdef = virDomainDefParseString(xmlin,
+                        driver->xmlopt,
+                        NULL,
+                        VIR_DOMAIN_DEF_PARSE_INACTIVE |
+                        VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE)))
+            goto endjob;
+
+        def = tmpdef;
+    } else {
+        def = vm->def;
+    }
+
+    if (!chDomainMigrationIsAllowed(def))
+        goto endjob;
+
+    xml = virDomainDefFormat(def, driver->xmlopt, VIR_DOMAIN_DEF_FORMAT_SECURE);
+    /* Valid XML means success. EndJob called in the confirm phase */
+    if (xml)
+        goto cleanup;
+
+endjob:
+    virCHDomainObjEndJob(vm);
+
+cleanup:
+    chMigrationCookieFree(mig);
+    virDomainDefFree(tmpdef);
+    return xml;
 }
