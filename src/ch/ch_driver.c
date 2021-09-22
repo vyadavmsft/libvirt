@@ -27,6 +27,7 @@
 #include "ch_monitor.h"
 #include "ch_process.h"
 #include "ch_cgroup.h"
+#include "ch_migration.h"
 #include "datatypes.h"
 #include "domain_event.h"
 #include "driver.h"
@@ -2007,14 +2008,24 @@ chDomainMigrateBegin3(virDomainPtr domain,
                       const char *dname,
                       unsigned long resource G_GNUC_UNUSED)
 {
-    (void) domain;
-    (void) xmlin;
-    (void) cookieout;
-    (void) cookieoutlen;
-    (void) flags;
+    virDomainObjPtr vm;
+
+    virCheckFlags(CH_MIGRATION_FLAGS, NULL);
+
+    if (!(vm = chDomObjFromDomain(domain)))
+        return NULL;
+
+    if (virDomainMigrateBegin3EnsureACL(domain->conn, vm->def) < 0) {
+        virDomainObjEndAPI(&vm);
+        return NULL;
+    }
+
+    /* XXX unused for now */
     (void) dname;
-    (void) resource;
-    return NULL;
+    (void) flags;
+
+    return chDomainMigrationSrcBegin(domain->conn, vm, xmlin,
+                                     cookieout, cookieoutlen);
 }
 
 static int
