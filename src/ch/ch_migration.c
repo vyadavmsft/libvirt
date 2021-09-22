@@ -36,6 +36,7 @@ typedef struct _chMigrationCookie chMigrationCookie;
 typedef chMigrationCookie *chMigrationCookiePtr;
 struct _chMigrationCookie {
 	/* Nothing for now */
+    int unused;
 };
 
 static void
