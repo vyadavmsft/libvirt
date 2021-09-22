@@ -165,3 +165,30 @@ cleanup:
     virDomainDefFree(tmpdef);
     return xml;
 }
+
+int
+chDomainMigrationDstPrepare(virConnectPtr dconn,
+                            virDomainDefPtr *def,
+                            const char *uri_in,
+                            char **uri_out,
+                            const char *cookiein,
+                            int cookieinlen,
+                            unsigned int flags)
+{
+    virCHDriverPtr driver = dconn->privateData;
+    chMigrationCookiePtr mig = NULL;
+
+
+    (void) chMigrationEatCookie;
+    (void) driver;
+    (void) mig;
+    (void) def;
+    (void) uri_in;
+    (void) uri_out;
+    (void) cookiein;
+    (void) cookieinlen;
+    (void) flags;
+
+
+    return -1;
+}
