@@ -1030,9 +1030,9 @@ chConnectSupportsFeature(virConnectPtr conn, int feature)
 
     switch ((virDrvFeature) feature) {
     case VIR_DRV_FEATURE_TYPED_PARAM_STRING:
+    case VIR_DRV_FEATURE_MIGRATION_V3:
         return 1;
     case VIR_DRV_FEATURE_MIGRATION_V2:
-    case VIR_DRV_FEATURE_MIGRATION_V3:
     case VIR_DRV_FEATURE_MIGRATION_P2P:
     case VIR_DRV_FEATURE_MIGRATE_CHANGE_PROTECTION:
     case VIR_DRV_FEATURE_FD_PASSING:
@@ -1998,6 +1998,119 @@ static int chDomainGetAutostart(virDomainPtr dom,
     return ret;
 };
 
+static char *
+chDomainMigrateBegin3(virDomainPtr domain,
+                      const char *xmlin,
+                      char **cookieout,
+                      int *cookieoutlen,
+                      unsigned long flags,
+                      const char *dname,
+                      unsigned long resource G_GNUC_UNUSED)
+{
+    (void) domain;
+    (void) xmlin;
+    (void) cookieout;
+    (void) cookieoutlen;
+    (void) flags;
+    (void) dname;
+    (void) resource;
+    return NULL;
+}
+
+static int
+chDomainMigratePrepare3(virConnectPtr dconn,
+                        const char *cookiein,
+                        int cookieinlen,
+                        char **cookieout,
+                        int *cookieoutlen,
+                        const char *uri_in,
+                        char **uri_out,
+                        unsigned long flags,
+                        const char *dname,
+                        unsigned long resource G_GNUC_UNUSED,
+                        const char *dom_xml)
+{
+    (void) dconn;
+    (void) cookiein;
+    (void) cookieinlen;
+    (void) cookieoutlen;
+    (void) cookieout;
+    (void) uri_in;
+    (void) uri_out;
+    (void) flags;
+    (void) dname;
+    (void) resource;
+    (void) dom_xml;
+
+    return -1;
+}
+
+static int
+chDomainMigratePerform3(virDomainPtr dom,
+                        const char *xmlin,
+                        const char *cookiein,
+                        int cookieinlen,
+                        char **cookieout,
+                        int *cookieoutlen,
+                        const char *dconnuri,
+                        const char *uri,
+                        unsigned long flags,
+                        const char *dname,
+                        unsigned long resource)
+{
+    (void) dom;
+    (void) xmlin;
+    (void) cookiein;
+    (void) cookieinlen;
+    (void) cookieout;
+    (void) cookieoutlen;
+    (void) dconnuri;
+    (void) uri;
+    (void) flags;
+    (void) dname;
+    (void) resource;
+    return -1;
+}
+
+static virDomainPtr
+chDomainMigrateFinish3(virConnectPtr dconn,
+                       const char *dname,
+                       const char *cookiein,
+                       int cookieinlen,
+                       char **cookieout,
+                       int *cookieoutlen,
+                       const char *dconnuri G_GNUC_UNUSED,
+                       const char *uri G_GNUC_UNUSED,
+                       unsigned long flags,
+                       int cancelled)
+{
+    (void) dconn;
+    (void) dname;
+    (void) cookiein;
+    (void) cookieinlen;
+    (void) cookieout;
+    (void) cookieoutlen;
+    (void) dconnuri;
+    (void) uri;
+    (void) flags;
+    (void) cancelled;
+    return NULL;
+}
+
+static int
+chDomainMigrateConfirm3(virDomainPtr domain,
+                        const char *cookiein,
+                        int cookieinlen,
+                        unsigned long flags,
+                        int cancelled)
+{
+    (void) domain;
+    (void) cookiein;
+    (void) cookieinlen;
+    (void) flags;
+    (void) cancelled;
+    return -1;
+}
 
 /* Function Tables */
 static virHypervisorDriver chHypervisorDriver = {
@@ -2051,6 +2164,11 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainGetAutostart = chDomainGetAutostart,             /* 6.7.0 */
     .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
     .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
+    .domainMigrateBegin3 = chDomainMigrateBegin3,           /* x.y.z */
+    .domainMigratePrepare3 = chDomainMigratePrepare3,
+    .domainMigratePerform3 = chDomainMigratePerform3,
+    .domainMigrateFinish3 = chDomainMigrateFinish3,
+    .domainMigrateConfirm3 = chDomainMigrateConfirm3,
 };
 
 static virConnectDriver chConnectDriver = {
