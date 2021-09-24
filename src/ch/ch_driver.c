@@ -2072,6 +2072,21 @@ chDomainMigratePerform3(virDomainPtr dom,
                         const char *dname,
                         unsigned long resource)
 {
+    virCHDriverPtr driver = dom->conn->privateData;
+    virDomainObjPtr vm = NULL;
+    int ret = -1;
+
+    virCheckFlags(CH_MIGRATION_FLAGS, -1);
+
+    if (!(vm = chDomObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainMigratePerform3EnsureACL(dom->conn, vm->def) < 0)
+        goto cleanup;
+
+    ret = chDomainMigrationSrcPerform(driver, vm, xmlin, dconnuri, uri,
+                                      dname, 0);
+
     (void) dom;
     (void) xmlin;
     (void) cookiein;
@@ -2083,7 +2098,11 @@ chDomainMigratePerform3(virDomainPtr dom,
     (void) flags;
     (void) dname;
     (void) resource;
-    return -1;
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
+
 }
 
 static virDomainPtr

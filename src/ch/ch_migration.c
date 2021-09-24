@@ -247,3 +247,26 @@ error:
 
     return -1;
 }
+
+
+int
+chDomainMigrationSrcPerform(virCHDriverPtr driver,
+                            virDomainObjPtr vm,
+                            const char *dom_xml,
+                            const char *dconnuri,
+                            const char *uri_str,
+                            const char *dname,
+                            unsigned int flags)
+{
+    (void) driver;
+    (void) vm;
+    (void) dom_xml;
+    (void) dconnuri;
+    (void) uri_str;
+    (void) dname;
+    (void) flags;
+
+    /* End the job started in SrcBegin */
+    virCHDomainObjEndJob(vm);
+    return -1;
+}
