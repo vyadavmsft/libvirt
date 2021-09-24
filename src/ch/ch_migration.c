@@ -223,6 +223,9 @@ chDomainMigrationDstPrepare(virConnectPtr dconn,
                     NULL)))
         goto error;
 
+    if (virCHDomainObjBeginJob(vm, CH_JOB_MODIFY) < 0)
+        goto error;
+
     (void) chMigrationEatCookie;
     (void) driver;
     (void) mig;
