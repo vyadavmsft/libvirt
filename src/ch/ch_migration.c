@@ -167,18 +167,61 @@ cleanup:
     return xml;
 }
 
+virDomainDefPtr
+chDomainMigrationAnyPrepareDef(virCHDriverPtr driver,
+                               const char *dom_xml,
+                               const char *dname,
+                               char **origname)
+{
+    virDomainDefPtr def;
+    char *name = NULL;
+
+    if (!dom_xml) {
+        virReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                       _("no domain XML passed"));
+        return NULL;
+    }
+
+    if (!(def = virDomainDefParseString(dom_xml, driver->xmlopt,
+                                        NULL,
+                                        VIR_DOMAIN_DEF_PARSE_INACTIVE |
+                                        VIR_DOMAIN_DEF_PARSE_SKIP_VALIDATE)))
+        goto cleanup;
+
+    if (dname) {
+        name = def->name;
+        def->name = g_strdup(dname);
+    }
+
+ cleanup:
+    if (def && origname)
+        *origname = name;
+    else
+        VIR_FREE(name);
+    return def;
+}
+
 int
 chDomainMigrationDstPrepare(virConnectPtr dconn,
                             virDomainDefPtr *def,
-                            const char *uri_in,
-                            char **uri_out,
                             const char *cookiein,
                             int cookieinlen,
-                            unsigned int flags)
+                            char **cookieout,
+                            int *cookieoutlen,
+                            const char *uri_in,
+                            char **uri_out,
+                            const char *origname)
 {
     virCHDriverPtr driver = dconn->privateData;
     chMigrationCookiePtr mig = NULL;
+    virDomainObjPtr vm = NULL;
 
+    if (!(vm = virDomainObjListAdd(driver->domains, *def,
+                    driver->xmlopt,
+                    VIR_DOMAIN_OBJ_LIST_ADD_LIVE |
+                    VIR_DOMAIN_OBJ_LIST_ADD_CHECK_LIVE,
+                    NULL)))
+        goto error;
 
     (void) chMigrationEatCookie;
     (void) driver;
@@ -188,8 +231,16 @@ chDomainMigrationDstPrepare(virConnectPtr dconn,
     (void) uri_out;
     (void) cookiein;
     (void) cookieinlen;
-    (void) flags;
+    (void) cookieout;
+    (void) cookieoutlen;
+    (void) origname;
 
+    virCHDomainObjEndJob(vm);
+
+error:
+    /* Remove virDomainObj from domain list */
+    if (vm)
+        virDomainObjListRemove(driver->domains, vm);
 
     return -1;
 }

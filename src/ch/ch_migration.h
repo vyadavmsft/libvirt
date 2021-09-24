@@ -37,14 +37,22 @@ chDomainMigrationSrcBegin(virConnectPtr conn,
                           char **cookieout,
                           int *cookieoutlen);
 
+virDomainDefPtr
+chDomainMigrationAnyPrepareDef(virCHDriverPtr driver,
+                               const char *dom_xml,
+                               const char *dname,
+                               char **origname);
+
 int
 chDomainMigrationDstPrepare(virConnectPtr dconn,
                             virDomainDefPtr *def,
-                            const char *uri_in,
-                            char **uri_out,
                             const char *cookiein,
                             int cookieinlen,
-                            unsigned int flags);
+                            char **cookieout,
+                            int *cookieoutlen,
+                            const char *uri_in,
+                            char **uri_out,
+                            const char *origname);
 
 int
 chDomainMigrationSrcPerform(virCHDriverPtr driver,

@@ -2041,19 +2041,22 @@ chDomainMigratePrepare3(virConnectPtr dconn,
                         unsigned long resource G_GNUC_UNUSED,
                         const char *dom_xml)
 {
-    (void) dconn;
-    (void) cookiein;
-    (void) cookieinlen;
-    (void) cookieoutlen;
-    (void) cookieout;
-    (void) uri_in;
-    (void) uri_out;
-    (void) flags;
-    (void) dname;
-    (void) resource;
-    (void) dom_xml;
+    virCHDriverPtr driver = dconn->privateData;
+    g_autoptr(virDomainDef) def = NULL;
+    g_autofree char *origname = NULL;
 
-    return -1;
+    virCheckFlags(CH_MIGRATION_FLAGS, -1);
+
+    if (!(def = chDomainMigrationAnyPrepareDef(driver, dom_xml, dname, &origname)))
+        return -1;
+
+    if (virDomainMigratePrepare3EnsureACL(dconn, def) < 0)
+        return -1;
+
+    return chDomainMigrationDstPrepare(dconn, &def,
+            cookiein, cookieinlen, cookieout, cookieoutlen,
+            uri_in, uri_out,
+            origname);
 }
 
 static int
