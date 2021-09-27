@@ -2034,28 +2034,40 @@ chDomainMigrateBegin3Params(virDomainPtr domain,
 }
 
 static int
-chDomainMigratePrepare3(virConnectPtr dconn,
-                        const char *cookiein,
-                        int cookieinlen,
-                        char **cookieout,
-                        int *cookieoutlen,
-                        const char *uri_in,
-                        char **uri_out,
-                        unsigned long flags,
-                        const char *dname,
-                        unsigned long resource G_GNUC_UNUSED,
-                        const char *dom_xml)
+chDomainMigratePrepare3Params(virConnectPtr dconn,
+                              virTypedParameterPtr params,
+                              int nparams,
+                              const char *cookiein,
+                              int cookieinlen,
+                              char **cookieout,
+                              int *cookieoutlen,
+                              char **uri_out,
+                              unsigned int flags)
 {
     virCHDriverPtr driver = dconn->privateData;
     g_autoptr(virDomainDef) def = NULL;
     g_autofree char *origname = NULL;
+    const char *dom_xml = NULL;
+    const char *dname = NULL;
+    const char *uri_in = NULL;
 
     virCheckFlags(CH_MIGRATION_FLAGS, -1);
+
+    if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
+        return -1;
+
+    if (virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_XML,
+                                &dom_xml) < 0 ||
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_NAME,
+                                &dname) < 0 ||
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_URI,
+                                &uri_in) < 0)
+        return -1;
 
     if (!(def = chDomainMigrationAnyPrepareDef(driver, dom_xml, dname, &origname)))
         return -1;
 
-    if (virDomainMigratePrepare3EnsureACL(dconn, def) < 0)
+    if (virDomainMigratePrepare3ParamsEnsureACL(dconn, def) < 0)
         return -1;
 
     return chDomainMigrationDstPrepare(dconn, &def,
@@ -2213,7 +2225,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
     .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
     .domainMigrateBegin3Params = chDomainMigrateBegin3Params,  /* x.y.z */
-    .domainMigratePrepare3 = chDomainMigratePrepare3,
+    .domainMigratePrepare3Params = chDomainMigratePrepare3Params,
     .domainMigratePerform3 = chDomainMigratePerform3,
     .domainMigrateFinish3 = chDomainMigrateFinish3,
     .domainMigrateConfirm3 = chDomainMigrateConfirm3,
