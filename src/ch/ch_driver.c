@@ -2175,10 +2175,26 @@ static int
 chDomainGetJobInfo(virDomainPtr dom,
                    virDomainJobInfoPtr info)
 {
-    (void) dom;
-    (void) info;
-    VIR_DEBUG("XXX");
-    return -1;
+    virCHDriverPtr driver = dom->conn->privateData;
+    virDomainObjPtr vm;
+    int ret = -1;
+
+    memset(info, 0, sizeof(*info));
+    if (!(vm = virCHDomainObjFromDomain(dom)))
+        goto cleanup;
+
+    if (virDomainGetJobInfoEnsureACL(dom->conn, vm->def) < 0)
+        goto cleanup;
+
+    /* XXX leave all fields zero for now */
+
+    (void) driver;
+
+    ret = 0;
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
 }
 
 /* Function Tables */
