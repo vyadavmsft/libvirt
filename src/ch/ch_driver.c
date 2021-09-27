@@ -2077,44 +2077,55 @@ chDomainMigratePrepare3Params(virConnectPtr dconn,
 }
 
 static int
-chDomainMigratePerform3(virDomainPtr dom,
-                        const char *xmlin,
-                        const char *cookiein,
-                        int cookieinlen,
-                        char **cookieout,
-                        int *cookieoutlen,
-                        const char *dconnuri,
-                        const char *uri,
-                        unsigned long flags,
-                        const char *dname,
-                        unsigned long resource)
+chDomainMigratePerform3Params(virDomainPtr dom,
+                              const char *dconnuri,
+                              virTypedParameterPtr params,
+                              int nparams,
+                              const char *cookiein,
+                              int cookieinlen,
+                              char **cookieout,
+                              int *cookieoutlen,
+                              unsigned int flags)
 {
     virCHDriverPtr driver = dom->conn->privateData;
     virDomainObjPtr vm = NULL;
     int ret = -1;
+    const char *dom_xml = NULL;
+    const char *dname = NULL;
+    const char *uri = NULL;
+    const char *persist_xml = NULL;
 
     virCheckFlags(CH_MIGRATION_FLAGS, -1);
+    if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
+        goto cleanup;
+
+    if (virTypedParamsGetString(params, nparams,
+                                VIR_MIGRATE_PARAM_DEST_XML,
+                                &dom_xml) < 0 ||
+        virTypedParamsGetString(params, nparams,
+                                VIR_MIGRATE_PARAM_DEST_NAME,
+                                &dname) < 0 ||
+        virTypedParamsGetString(params, nparams,
+                                VIR_MIGRATE_PARAM_URI,
+                                &uri) < 0 ||
+        virTypedParamsGetString(params, nparams,
+                                VIR_MIGRATE_PARAM_PERSIST_XML,
+                                &persist_xml) < 0)
+        goto cleanup;
 
     if (!(vm = chDomObjFromDomain(dom)))
         goto cleanup;
 
-    if (virDomainMigratePerform3EnsureACL(dom->conn, vm->def) < 0)
+    if (virDomainMigratePerform3ParamsEnsureACL(dom->conn, vm->def) < 0)
         goto cleanup;
 
-    ret = chDomainMigrationSrcPerform(driver, vm, xmlin, dconnuri, uri,
+    ret = chDomainMigrationSrcPerform(driver, vm, dom_xml, dconnuri, uri,
                                       dname, 0);
 
-    (void) dom;
-    (void) xmlin;
     (void) cookiein;
     (void) cookieinlen;
     (void) cookieout;
     (void) cookieoutlen;
-    (void) dconnuri;
-    (void) uri;
-    (void) flags;
-    (void) dname;
-    (void) resource;
 
  cleanup:
     virDomainObjEndAPI(&vm);
@@ -2226,7 +2237,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
     .domainMigrateBegin3Params = chDomainMigrateBegin3Params,  /* x.y.z */
     .domainMigratePrepare3Params = chDomainMigratePrepare3Params,
-    .domainMigratePerform3 = chDomainMigratePerform3,
+    .domainMigratePerform3Params = chDomainMigratePerform3Params,
     .domainMigrateFinish3 = chDomainMigrateFinish3,
     .domainMigrateConfirm3 = chDomainMigrateConfirm3,
     .domainGetJobInfo = chDomainGetJobInfo,
