@@ -2000,29 +2000,34 @@ static int chDomainGetAutostart(virDomainPtr dom,
 };
 
 static char *
-chDomainMigrateBegin3(virDomainPtr domain,
-                      const char *xmlin,
-                      char **cookieout,
-                      int *cookieoutlen,
-                      unsigned long flags,
-                      const char *dname,
-                      unsigned long resource G_GNUC_UNUSED)
+chDomainMigrateBegin3Params(virDomainPtr domain,
+                            virTypedParameterPtr params,
+                            int nparams,
+                            char **cookieout,
+                            int *cookieoutlen,
+                            unsigned int flags)
 {
     virDomainObjPtr vm;
+    const char *xmlin = NULL;
+    const char *dname = NULL;
 
     virCheckFlags(CH_MIGRATION_FLAGS, NULL);
+    if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
+        return NULL;
+
+    if (virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_XML,
+                                &xmlin) < 0 ||
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_NAME,
+                                &dname) < 0)
+        return NULL;
 
     if (!(vm = chDomObjFromDomain(domain)))
         return NULL;
 
-    if (virDomainMigrateBegin3EnsureACL(domain->conn, vm->def) < 0) {
+    if (virDomainMigrateBegin3ParamsEnsureACL(domain->conn, vm->def) < 0) {
         virDomainObjEndAPI(&vm);
         return NULL;
     }
-
-    /* XXX unused for now */
-    (void) dname;
-    (void) flags;
 
     return chDomainMigrationSrcBegin(domain->conn, vm, xmlin,
                                      cookieout, cookieoutlen);
@@ -2197,7 +2202,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainGetAutostart = chDomainGetAutostart,             /* 6.7.0 */
     .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
     .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
-    .domainMigrateBegin3 = chDomainMigrateBegin3,           /* x.y.z */
+    .domainMigrateBegin3Params = chDomainMigrateBegin3Params,  /* x.y.z */
     .domainMigratePrepare3 = chDomainMigratePrepare3,
     .domainMigratePerform3 = chDomainMigratePerform3,
     .domainMigrateFinish3 = chDomainMigrateFinish3,
