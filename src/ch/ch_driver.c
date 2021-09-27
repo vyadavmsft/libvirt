@@ -2150,6 +2150,16 @@ chDomainMigrateConfirm3(virDomainPtr domain,
     return -1;
 }
 
+static int
+chDomainGetJobInfo(virDomainPtr dom,
+                   virDomainJobInfoPtr info)
+{
+    (void) dom;
+    (void) info;
+    VIR_DEBUG("XXX");
+    return -1;
+}
+
 /* Function Tables */
 static virHypervisorDriver chHypervisorDriver = {
     .name = "CH",
@@ -2207,6 +2217,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainMigratePerform3 = chDomainMigratePerform3,
     .domainMigrateFinish3 = chDomainMigrateFinish3,
     .domainMigrateConfirm3 = chDomainMigrateConfirm3,
+    .domainGetJobInfo = chDomainGetJobInfo,
 };
 
 static virConnectDriver chConnectDriver = {
