@@ -2250,11 +2250,11 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainSetAutostart = chDomainSetAutostart,             /* 6.7.0 */
     .domainSetVcpus = chDomainSetVcpus,                     /* 6.7.0 */
     .domainMigrateBegin3Params = chDomainMigrateBegin3Params,  /* x.y.z */
-    .domainMigratePrepare3Params = chDomainMigratePrepare3Params,
-    .domainMigratePerform3Params = chDomainMigratePerform3Params,
-    .domainMigrateFinish3Params = chDomainMigrateFinish3Params,
-    .domainMigrateConfirm3Params = chDomainMigrateConfirm3Params,
-    .domainGetJobInfo = chDomainGetJobInfo,
+    .domainMigratePrepare3Params = chDomainMigratePrepare3Params, /* x.y.z */
+    .domainMigratePerform3Params = chDomainMigratePerform3Params, /* x.y.z */
+    .domainMigrateFinish3Params = chDomainMigrateFinish3Params, /* x.y.z */
+    .domainMigrateConfirm3Params = chDomainMigrateConfirm3Params, /* x.y.z */
+    .domainGetJobInfo = chDomainGetJobInfo, /* x.y.z */
 };
 
 static virConnectDriver chConnectDriver = {
