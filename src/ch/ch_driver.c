@@ -2099,17 +2099,13 @@ chDomainMigratePerform3Params(virDomainPtr dom,
     if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
         goto cleanup;
 
-    if (virTypedParamsGetString(params, nparams,
-                                VIR_MIGRATE_PARAM_DEST_XML,
+    if (virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_XML,
                                 &dom_xml) < 0 ||
-        virTypedParamsGetString(params, nparams,
-                                VIR_MIGRATE_PARAM_DEST_NAME,
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_NAME,
                                 &dname) < 0 ||
-        virTypedParamsGetString(params, nparams,
-                                VIR_MIGRATE_PARAM_URI,
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_URI,
                                 &uri) < 0 ||
-        virTypedParamsGetString(params, nparams,
-                                VIR_MIGRATE_PARAM_PERSIST_XML,
+        virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_PERSIST_XML,
                                 &persist_xml) < 0)
         goto cleanup;
 
@@ -2134,25 +2130,23 @@ chDomainMigratePerform3Params(virDomainPtr dom,
 }
 
 static virDomainPtr
-chDomainMigrateFinish3(virConnectPtr dconn,
-                       const char *dname,
-                       const char *cookiein,
-                       int cookieinlen,
-                       char **cookieout,
-                       int *cookieoutlen,
-                       const char *dconnuri G_GNUC_UNUSED,
-                       const char *uri G_GNUC_UNUSED,
-                       unsigned long flags,
-                       int cancelled)
+chDomainMigrateFinish3Params(virConnectPtr dconn,
+                             virTypedParameterPtr params,
+                             int nparams,
+                             const char *cookiein,
+                             int cookieinlen,
+                             char **cookieout,
+                             int *cookieoutlen,
+                             unsigned int flags,
+                             int cancelled)
 {
     (void) dconn;
-    (void) dname;
+    (void) params;
+    (void) nparams;
     (void) cookiein;
     (void) cookieinlen;
     (void) cookieout;
     (void) cookieoutlen;
-    (void) dconnuri;
-    (void) uri;
     (void) flags;
     (void) cancelled;
     return NULL;
@@ -2238,7 +2232,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainMigrateBegin3Params = chDomainMigrateBegin3Params,  /* x.y.z */
     .domainMigratePrepare3Params = chDomainMigratePrepare3Params,
     .domainMigratePerform3Params = chDomainMigratePerform3Params,
-    .domainMigrateFinish3 = chDomainMigrateFinish3,
+    .domainMigrateFinish3Params = chDomainMigrateFinish3Params,
     .domainMigrateConfirm3 = chDomainMigrateConfirm3,
     .domainGetJobInfo = chDomainGetJobInfo,
 };
