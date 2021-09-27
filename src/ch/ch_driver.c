@@ -2153,13 +2153,17 @@ chDomainMigrateFinish3Params(virConnectPtr dconn,
 }
 
 static int
-chDomainMigrateConfirm3(virDomainPtr domain,
-                        const char *cookiein,
-                        int cookieinlen,
-                        unsigned long flags,
-                        int cancelled)
+chDomainMigrateConfirm3Params(virDomainPtr domain,
+                              virTypedParameterPtr params,
+                              int nparams,
+                              const char *cookiein,
+                              int cookieinlen,
+                              unsigned int flags,
+                              int cancelled)
 {
     (void) domain;
+    (void) params;
+    (void) nparams;
     (void) cookiein;
     (void) cookieinlen;
     (void) flags;
@@ -2233,7 +2237,7 @@ static virHypervisorDriver chHypervisorDriver = {
     .domainMigratePrepare3Params = chDomainMigratePrepare3Params,
     .domainMigratePerform3Params = chDomainMigratePerform3Params,
     .domainMigrateFinish3Params = chDomainMigrateFinish3Params,
-    .domainMigrateConfirm3 = chDomainMigrateConfirm3,
+    .domainMigrateConfirm3Params = chDomainMigrateConfirm3Params,
     .domainGetJobInfo = chDomainGetJobInfo,
 };
 
