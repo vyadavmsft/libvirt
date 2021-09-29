@@ -2010,27 +2010,29 @@ chDomainMigrateBegin3Params(virDomainPtr domain,
     virDomainObjPtr vm;
     const char *xmlin = NULL;
     const char *dname = NULL;
+    char *xmlout = NULL;
 
     virCheckFlags(CH_MIGRATION_FLAGS, NULL);
     if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
-        return NULL;
+        goto cleanup;
 
     if (virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_XML,
                                 &xmlin) < 0 ||
         virTypedParamsGetString(params, nparams, VIR_MIGRATE_PARAM_DEST_NAME,
                                 &dname) < 0)
-        return NULL;
+        goto cleanup;
 
     if (!(vm = chDomObjFromDomain(domain)))
-        return NULL;
+        goto cleanup;
 
-    if (virDomainMigrateBegin3ParamsEnsureACL(domain->conn, vm->def) < 0) {
-        virDomainObjEndAPI(&vm);
-        return NULL;
-    }
+    if (virDomainMigrateBegin3ParamsEnsureACL(domain->conn, vm->def) < 0)
+        goto cleanup;
 
-    return chDomainMigrationSrcBegin(domain->conn, vm, xmlin,
-                                     cookieout, cookieoutlen);
+    xmlout = chDomainMigrationSrcBegin(domain->conn, vm, xmlin,
+                                       cookieout, cookieoutlen);
+cleanup:
+    virDomainObjEndAPI(&vm);
+    return xmlout;
 }
 
 static int
