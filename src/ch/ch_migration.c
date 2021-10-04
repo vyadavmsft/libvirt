@@ -270,3 +270,17 @@ chDomainMigrationSrcPerform(virCHDriverPtr driver,
     virCHDomainObjEndJob(vm);
     return -1;
 }
+
+int
+chDomainMigrationSrcConfirm(virCHDriverPtr driver,
+                            virDomainObjPtr vm,
+                            unsigned int flags,
+                            int cancelled)
+{
+    (void) driver;
+    (void) flags;
+    (void) cancelled;
+
+    virCHDomainObjEndJob(vm);
+    return -1;
+}

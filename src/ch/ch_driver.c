@@ -2163,14 +2163,28 @@ chDomainMigrateConfirm3Params(virDomainPtr domain,
                               unsigned int flags,
                               int cancelled)
 {
-    (void) domain;
-    (void) params;
-    (void) nparams;
+    virDomainObjPtr vm = NULL;
+    virCHDriverPtr driver = domain->conn->privateData;
+    int ret = -1;
+
     (void) cookiein;
     (void) cookieinlen;
-    (void) flags;
-    (void) cancelled;
-    return -1;
+
+    virCheckFlags(CH_MIGRATION_FLAGS, -1);
+    if (virTypedParamsValidate(params, nparams, CH_MIGRATION_PARAMETERS) < 0)
+        return -1;
+
+    if (!(vm = chDomObjFromDomain(domain)))
+        return -1;
+
+    if (virDomainMigrateConfirm3ParamsEnsureACL(domain->conn, vm->def) < 0)
+        goto cleanup;
+
+    ret = chDomainMigrationSrcConfirm(driver, vm, flags, cancelled);
+
+ cleanup:
+    virDomainObjEndAPI(&vm);
+    return ret;
 }
 
 static int
