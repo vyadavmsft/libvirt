@@ -154,9 +154,6 @@ chDomainMigrationSrcBegin(virConnectPtr conn,
         goto endjob;
 
     xml = virDomainDefFormat(def, driver->xmlopt, VIR_DOMAIN_DEF_FORMAT_SECURE);
-    /* Valid XML means success. EndJob called in the confirm phase */
-    if (xml)
-        goto cleanup;
 
 endjob:
     virCHDomainObjEndJob(vm);
@@ -266,8 +263,6 @@ chDomainMigrationSrcPerform(virCHDriverPtr driver,
     (void) dname;
     (void) flags;
 
-    /* End the job started in SrcBegin */
-    virCHDomainObjEndJob(vm);
     return -1;
 }
 
@@ -281,6 +276,5 @@ chDomainMigrationSrcConfirm(virCHDriverPtr driver,
     (void) flags;
     (void) cancelled;
 
-    virCHDomainObjEndJob(vm);
     return -1;
 }
