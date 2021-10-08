@@ -275,6 +275,7 @@ chDomainMigrationSrcConfirm(virCHDriverPtr driver,
     (void) driver;
     (void) flags;
     (void) cancelled;
-
+    (void) vm;
+    
     return -1;
 }
