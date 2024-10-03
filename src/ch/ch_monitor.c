@@ -50,7 +50,8 @@
  * Retry count for temporary failures observed
  * in Monitor code path.
  */
-#define MONITOR_TMP_FAIL_RETRIES 5
+#define MONITOR_TMP_FAIL_RETRIES 50
+
 
 VIR_LOG_INIT("ch.ch_monitor");
 
