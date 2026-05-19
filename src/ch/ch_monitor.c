@@ -41,6 +41,7 @@
 #include "virjson.h"
 #include "virlog.h"
 #include "virpidfile.h"
+#include "virstoragefile.h"
 #include "virtime.h"
 #include "ch_interface.h"
 
@@ -315,6 +316,22 @@ virCHMonitorBuildDiskJson(virJSONValuePtr disks, virDomainDiskDefPtr diskdef)
         if (diskdef->src->readonly) {
             if (virJSONValueObjectAppendBoolean(disk, "readonly", true) < 0)
                 goto cleanup;
+        }
+        switch (diskdef->src->format) {
+        case VIR_STORAGE_FILE_RAW:
+            if (virJSONValueObjectAppendString(disk, "image_type", "Raw") < 0)
+                goto cleanup;
+            break;
+        case VIR_STORAGE_FILE_QCOW2:
+            if (virJSONValueObjectAppendString(disk, "image_type", "Qcow2") < 0)
+                goto cleanup;
+            break;
+        case VIR_STORAGE_FILE_VHD:
+            if (virJSONValueObjectAppendString(disk, "image_type", "FixedVhd") < 0)
+                goto cleanup;
+            break;
+        default:
+            break;
         }
         if (virJSONValueArrayAppend(disks, disk) < 0)
             goto cleanup;
